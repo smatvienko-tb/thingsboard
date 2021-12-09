@@ -66,6 +66,6 @@ public enum NoSqlTsPartitionDate {
                 }
             }
         }
-        return Optional.ofNullable(partition);
+        return Optional.of(partition);
     }
 }
