@@ -181,6 +181,8 @@ public class DefaultTelemetrySubscriptionService extends AbstractSubscriptionSer
     private void addCallbacks(TenantId tenantId, EntityId entityId, List<TsKvEntry> ts, FutureCallback<Integer> callback, ListenableFuture<Integer> saveFuture) {
         addMainCallback(saveFuture, callback);
         addWsCallback(saveFuture, success -> onTimeSeriesUpdate(tenantId, entityId, ts));
+        //TODO uncomment: test how the system load will be decreased without touching redis cache
+        /*
         if (EntityType.DEVICE.equals(entityId.getEntityType()) || EntityType.ASSET.equals(entityId.getEntityType())) {
             Futures.addCallback(this.entityViewService.findEntityViewsByTenantIdAndEntityIdAsync(tenantId, entityId),
                     new FutureCallback<List<EntityView>>() {
@@ -227,6 +229,7 @@ public class DefaultTelemetrySubscriptionService extends AbstractSubscriptionSer
                         }
                     }, MoreExecutors.directExecutor());
         }
+        */
     }
 
     @Override
