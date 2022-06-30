@@ -67,3 +67,4 @@ fromDir(srcDir, /(\.js|\.js\.map)$/, function (filename) {
   }
 });
 fs.cpSync(moduleMapPath, `${typeDir}/${moduleMapPath}`);
+
