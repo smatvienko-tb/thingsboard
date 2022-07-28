@@ -18,6 +18,7 @@ package org.thingsboard.server.queue.provider;
 import org.springframework.stereotype.Service;
 import org.thingsboard.server.gen.transport.TransportProtos.ToCoreMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToCoreNotificationMsg;
+import org.thingsboard.server.gen.transport.TransportProtos.ToReplicaMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToRuleEngineMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToRuleEngineNotificationMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToTransportMsg;
@@ -42,6 +43,8 @@ public class TbCoreQueueProducerProvider implements TbQueueProducerProvider {
     private TbQueueProducer<TbProtoQueueMsg<ToUsageStatsServiceMsg>> toUsageStats;
     private TbQueueProducer<TbProtoQueueMsg<ToVersionControlServiceMsg>> toVersionControl;
 
+    private TbQueueProducer<TbProtoQueueMsg<ToReplicaMsg>> toReplica;
+
     public TbCoreQueueProducerProvider(TbCoreQueueFactory tbQueueProvider) {
         this.tbQueueProvider = tbQueueProvider;
     }
@@ -55,6 +58,7 @@ public class TbCoreQueueProducerProvider implements TbQueueProducerProvider {
         this.toTbCoreNotifications = tbQueueProvider.createTbCoreNotificationsMsgProducer();
         this.toUsageStats = tbQueueProvider.createToUsageStatsServiceMsgProducer();
         this.toVersionControl = tbQueueProvider.createVersionControlMsgProducer();
+        this.toReplica = tbQueueProvider.createReplicaMsgProducer();
     }
 
     @Override
@@ -91,4 +95,10 @@ public class TbCoreQueueProducerProvider implements TbQueueProducerProvider {
     public TbQueueProducer<TbProtoQueueMsg<ToVersionControlServiceMsg>> getTbVersionControlMsgProducer() {
         return toVersionControl;
     }
+
+    @Override
+    public TbQueueProducer<TbProtoQueueMsg<ToReplicaMsg>> getTbReplicaMsgProducer() {
+        return toReplica;
+    }
+
 }

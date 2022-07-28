@@ -223,6 +223,11 @@ public class ServiceBusMonolithQueueFactory implements TbCoreQueueFactory, TbRul
         return new TbServiceBusProducerTemplate<>(vcAdmin, serviceBusSettings, vcSettings.getTopic());
     }
 
+    @Override
+    public TbQueueProducer<TbProtoQueueMsg<TransportProtos.ToReplicaMsg>> createReplicaMsgProducer() {
+        return null;
+    }
+
     @PreDestroy
     private void destroy() {
         if (coreAdmin != null) {

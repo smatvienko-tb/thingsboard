@@ -996,4 +996,20 @@ message ToOtaPackageStateServiceMsg {
   string type = 8;
 }
 
+/*
+Replica messaging
+*/
 
+message ToReplicaMsg {
+  string entityType = 1;
+  int64 entityIdMSB = 2;
+  int64 entityIdLSB = 3;
+  int64 tenantIdMSB = 4;
+  int64 tenantIdLSB = 5;
+  int64 customerIdMSB = 6;
+  int64 customerIdLSB = 7;
+  string action = 8; //CREATED, UPDATED, DELETED, POST_TELEMETRY_MSG, POST_ATTRIBUTES_MSG
+  string data = 9;
+  PostTelemetryMsg postTelemetryMsg = 10;
+  PostAttributeMsg postAttributesMsg = 11;
+}

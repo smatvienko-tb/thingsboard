@@ -40,6 +40,7 @@ public class TbRuleEngineProducerProvider implements TbQueueProducerProvider {
     private TbQueueProducer<TbProtoQueueMsg<ToRuleEngineNotificationMsg>> toRuleEngineNotifications;
     private TbQueueProducer<TbProtoQueueMsg<ToCoreNotificationMsg>> toTbCoreNotifications;
     private TbQueueProducer<TbProtoQueueMsg<ToUsageStatsServiceMsg>> toUsageStats;
+    private TbQueueProducer<TbProtoQueueMsg<TransportProtos.ToReplicaMsg>> toReplica;
 
     public TbRuleEngineProducerProvider(TbRuleEngineQueueFactory tbQueueProvider) {
         this.tbQueueProvider = tbQueueProvider;
@@ -53,6 +54,7 @@ public class TbRuleEngineProducerProvider implements TbQueueProducerProvider {
         this.toRuleEngineNotifications = tbQueueProvider.createRuleEngineNotificationsMsgProducer();
         this.toTbCoreNotifications = tbQueueProvider.createTbCoreNotificationsMsgProducer();
         this.toUsageStats = tbQueueProvider.createToUsageStatsServiceMsgProducer();
+        this.toReplica = tbQueueProvider.createReplicaMsgProducer();
     }
 
     @Override
@@ -89,4 +91,10 @@ public class TbRuleEngineProducerProvider implements TbQueueProducerProvider {
     public TbQueueProducer<TbProtoQueueMsg<TransportProtos.ToVersionControlServiceMsg>> getTbVersionControlMsgProducer() {
         throw new RuntimeException("Not Implemented! Should not be used by Rule Engine!");
     }
+
+    @Override
+    public TbQueueProducer<TbProtoQueueMsg<TransportProtos.ToReplicaMsg>> getTbReplicaMsgProducer() {
+        return toReplica;
+    }
+
 }

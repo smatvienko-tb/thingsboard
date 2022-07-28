@@ -19,6 +19,7 @@ import org.thingsboard.server.common.data.queue.Queue;
 import org.thingsboard.server.gen.js.JsInvokeProtos;
 import org.thingsboard.server.gen.transport.TransportProtos;
 import org.thingsboard.server.gen.transport.TransportProtos.ToCoreMsg;
+import org.thingsboard.server.gen.transport.TransportProtos.ToReplicaMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToRuleEngineMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToRuleEngineNotificationMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToTransportMsg;
@@ -93,4 +94,14 @@ public interface TbRuleEngineQueueFactory extends TbUsageStatsClientQueueFactory
     TbQueueConsumer<TbProtoQueueMsg<ToRuleEngineNotificationMsg>> createToRuleEngineNotificationsMsgConsumer();
 
     TbQueueRequestTemplate<TbProtoJsQueueMsg<JsInvokeProtos.RemoteJsRequest>, TbProtoQueueMsg<JsInvokeProtos.RemoteJsResponse>> createRemoteJsRequestTemplate();
+
+    /**
+     * Used to push messages to a Replica cluster
+     *
+     * @return
+     */
+    default TbQueueProducer<TbProtoQueueMsg<ToReplicaMsg>> createReplicaMsgProducer(){
+        return null;
+    }
+
 }

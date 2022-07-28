@@ -44,6 +44,8 @@ public class TbKafkaTopicConfigs {
     private String fwUpdatesProperties;
     @Value("${queue.kafka.topic-properties.version-control:}")
     private String vcProperties;
+    @Value("${queue.kafka.topic-properties.replica:}")
+    private String replicaProperties;
 
     @Getter
     private Map<String, String> coreConfigs;
@@ -63,6 +65,8 @@ public class TbKafkaTopicConfigs {
     private Map<String, String> fwUpdatesConfigs;
     @Getter
     private Map<String, String> vcConfigs;
+    @Getter
+    private Map<String, String> replicaConfigs;
 
     @PostConstruct
     private void init() {
@@ -77,6 +81,7 @@ public class TbKafkaTopicConfigs {
         jsExecutorResponseConfigs.put(NUM_PARTITIONS_SETTING, "1");
         fwUpdatesConfigs = getConfigs(fwUpdatesProperties);
         vcConfigs = getConfigs(vcProperties);
+        replicaConfigs = getConfigs(replicaProperties);
     }
 
     private Map<String, String> getConfigs(String properties) {

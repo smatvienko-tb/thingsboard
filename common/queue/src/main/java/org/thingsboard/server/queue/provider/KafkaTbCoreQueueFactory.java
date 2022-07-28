@@ -24,6 +24,7 @@ import org.thingsboard.server.gen.js.JsInvokeProtos;
 import org.thingsboard.server.gen.transport.TransportProtos.ToCoreMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToCoreNotificationMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToOtaPackageStateServiceMsg;
+import org.thingsboard.server.gen.transport.TransportProtos.ToReplicaMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToRuleEngineMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToRuleEngineNotificationMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToTransportMsg;
@@ -48,6 +49,7 @@ import org.thingsboard.server.queue.kafka.TbKafkaSettings;
 import org.thingsboard.server.queue.kafka.TbKafkaTopicConfigs;
 import org.thingsboard.server.queue.settings.TbQueueCoreSettings;
 import org.thingsboard.server.queue.settings.TbQueueRemoteJsInvokeSettings;
+import org.thingsboard.server.queue.settings.TbQueueReplicaSettings;
 import org.thingsboard.server.queue.settings.TbQueueRuleEngineSettings;
 import org.thingsboard.server.queue.settings.TbQueueTransportApiSettings;
 import org.thingsboard.server.queue.settings.TbQueueTransportNotificationSettings;
@@ -68,6 +70,7 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
     private final TbQueueTransportApiSettings transportApiSettings;
     private final TbQueueRemoteJsInvokeSettings jsInvokeSettings;
     private final TbQueueVersionControlSettings vcSettings;
+    private final TbQueueReplicaSettings replicaSettings;
     private final TbKafkaConsumerStatsService consumerStatsService;
     private final TbQueueTransportNotificationSettings transportNotificationSettings;
 
@@ -80,6 +83,7 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
     private final TbQueueAdmin notificationAdmin;
     private final TbQueueAdmin fwUpdatesAdmin;
     private final TbQueueAdmin vcAdmin;
+    private final TbQueueAdmin replicaAdmin;
 
     public KafkaTbCoreQueueFactory(NotificationsTopicService notificationsTopicService,
                                    TbKafkaSettings kafkaSettings,
@@ -89,6 +93,7 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
                                    TbQueueTransportApiSettings transportApiSettings,
                                    TbQueueRemoteJsInvokeSettings jsInvokeSettings,
                                    TbQueueVersionControlSettings vcSettings,
+                                   TbQueueReplicaSettings replicaSettings,
                                    TbKafkaConsumerStatsService consumerStatsService,
                                    TbQueueTransportNotificationSettings transportNotificationSettings,
                                    TbKafkaTopicConfigs kafkaTopicConfigs) {
@@ -100,6 +105,7 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
         this.transportApiSettings = transportApiSettings;
         this.jsInvokeSettings = jsInvokeSettings;
         this.vcSettings = vcSettings;
+        this.replicaSettings = replicaSettings;
         this.consumerStatsService = consumerStatsService;
         this.transportNotificationSettings = transportNotificationSettings;
 
@@ -112,6 +118,7 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
         this.notificationAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getNotificationsConfigs());
         this.fwUpdatesAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getFwUpdatesConfigs());
         this.vcAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getVcConfigs());
+        this.replicaAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getReplicaConfigs());
     }
 
     @Override
@@ -303,6 +310,16 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
         return requestBuilder.build();
     }
 
+    @Override
+    public TbQueueProducer<TbProtoQueueMsg<ToReplicaMsg>> createReplicaMsgProducer() {
+        TbKafkaProducerTemplate.TbKafkaProducerTemplateBuilder<TbProtoQueueMsg<ToReplicaMsg>> requestBuilder = TbKafkaProducerTemplate.builder();
+        requestBuilder.settings(kafkaSettings);
+        requestBuilder.clientId("tb-replica-producer-" + serviceInfoProvider.getServiceId());
+        requestBuilder.defaultTopic(replicaSettings.getTopic());
+        requestBuilder.admin(replicaAdmin);
+        return requestBuilder.build();
+    }
+
     @PreDestroy
     private void destroy() {
         if (coreAdmin != null) {
@@ -331,6 +348,9 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
         }
         if (vcAdmin != null) {
             vcAdmin.destroy();
+        }
+        if (replicaAdmin != null) {
+            replicaAdmin.destroy();
         }
     }
 }

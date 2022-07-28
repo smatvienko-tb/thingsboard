@@ -227,6 +227,11 @@ public class PubSubMonolithQueueFactory implements TbCoreQueueFactory, TbRuleEng
         return new TbPubSubProducerTemplate<>(vcAdmin, pubSubSettings, vcSettings.getTopic());
     }
 
+    @Override
+    public TbQueueProducer<TbProtoQueueMsg<TransportProtos.ToReplicaMsg>> createReplicaMsgProducer() {
+        return null;
+    }
+
     @PreDestroy
     private void destroy() {
         if (coreAdmin != null) {

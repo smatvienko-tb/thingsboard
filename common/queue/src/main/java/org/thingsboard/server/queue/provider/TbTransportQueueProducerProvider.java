@@ -83,4 +83,10 @@ public class TbTransportQueueProducerProvider implements TbQueueProducerProvider
     public TbQueueProducer<TbProtoQueueMsg<ToUsageStatsServiceMsg>> getTbUsageStatsMsgProducer() {
         return toUsageStats;
     }
+
+    @Override
+    public TbQueueProducer<TbProtoQueueMsg<TransportProtos.ToReplicaMsg>> getTbReplicaMsgProducer() {
+        throw new RuntimeException("Not Implemented! Should not be used by Transport!");
+    }
+
 }
