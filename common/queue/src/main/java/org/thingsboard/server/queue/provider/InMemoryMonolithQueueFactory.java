@@ -35,6 +35,7 @@ import org.thingsboard.server.queue.memory.InMemoryStorage;
 import org.thingsboard.server.queue.memory.InMemoryTbQueueConsumer;
 import org.thingsboard.server.queue.memory.InMemoryTbQueueProducer;
 import org.thingsboard.server.queue.settings.TbQueueCoreSettings;
+import org.thingsboard.server.queue.settings.TbQueueReplicaSettings;
 import org.thingsboard.server.queue.settings.TbQueueRuleEngineSettings;
 import org.thingsboard.server.queue.settings.TbQueueTransportApiSettings;
 import org.thingsboard.server.queue.settings.TbQueueTransportNotificationSettings;
@@ -50,6 +51,7 @@ public class InMemoryMonolithQueueFactory implements TbCoreQueueFactory, TbRuleE
     private final TbServiceInfoProvider serviceInfoProvider;
     private final TbQueueRuleEngineSettings ruleEngineSettings;
     private final TbQueueVersionControlSettings vcSettings;
+    private final TbQueueReplicaSettings replicaSettings;
     private final TbQueueTransportApiSettings transportApiSettings;
     private final TbQueueTransportNotificationSettings transportNotificationSettings;
     private final InMemoryStorage storage;
@@ -57,6 +59,7 @@ public class InMemoryMonolithQueueFactory implements TbCoreQueueFactory, TbRuleE
     public InMemoryMonolithQueueFactory(NotificationsTopicService notificationsTopicService, TbQueueCoreSettings coreSettings,
                                         TbQueueRuleEngineSettings ruleEngineSettings,
                                         TbQueueVersionControlSettings vcSettings,
+                                        TbQueueReplicaSettings replicaSettings,
                                         TbServiceInfoProvider serviceInfoProvider,
                                         TbQueueTransportApiSettings transportApiSettings,
                                         TbQueueTransportNotificationSettings transportNotificationSettings,
@@ -64,6 +67,7 @@ public class InMemoryMonolithQueueFactory implements TbCoreQueueFactory, TbRuleE
         this.notificationsTopicService = notificationsTopicService;
         this.coreSettings = coreSettings;
         this.vcSettings = vcSettings;
+        this.replicaSettings = replicaSettings;
         this.serviceInfoProvider = serviceInfoProvider;
         this.ruleEngineSettings = ruleEngineSettings;
         this.transportApiSettings = transportApiSettings;
@@ -161,9 +165,12 @@ public class InMemoryMonolithQueueFactory implements TbCoreQueueFactory, TbRuleE
         return new InMemoryTbQueueProducer<>(storage, vcSettings.getTopic());
     }
 
+    /*
+    * InMemory queue implemented for unit test backward compatibility with an upstream without replica feature
+    * */
     @Override
     public TbQueueProducer<TbProtoQueueMsg<ToReplicaMsg>> createReplicaMsgProducer() {
-        return null;
+        return new InMemoryTbQueueProducer<>(storage, replicaSettings.getTopic());
     }
 
     @Scheduled(fixedRateString = "${queue.in_memory.stats.print-interval-ms:60000}")
