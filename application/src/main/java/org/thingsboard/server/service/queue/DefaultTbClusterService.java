@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.rule.engine.api.msg.DeviceEdgeUpdateMsg;
 import org.thingsboard.rule.engine.api.msg.DeviceNameOrTypeUpdateMsg;
 import org.thingsboard.server.cluster.TbClusterService;
@@ -41,7 +42,6 @@ import org.thingsboard.server.common.data.id.DeviceId;
 import org.thingsboard.server.common.data.id.DeviceProfileId;
 import org.thingsboard.server.common.data.id.EdgeId;
 import org.thingsboard.server.common.data.id.EntityId;
-import org.thingsboard.server.common.data.id.QueueId;
 import org.thingsboard.server.common.data.id.RuleChainId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.plugin.ComponentLifecycleEvent;
@@ -53,11 +53,11 @@ import org.thingsboard.server.common.msg.plugin.ComponentLifecycleMsg;
 import org.thingsboard.server.common.msg.queue.ServiceType;
 import org.thingsboard.server.common.msg.queue.TopicPartitionInfo;
 import org.thingsboard.server.common.msg.rpc.FromDeviceRpcResponse;
-import org.thingsboard.server.queue.util.DataDecodingEncodingService;
 import org.thingsboard.server.gen.transport.TransportProtos;
 import org.thingsboard.server.gen.transport.TransportProtos.FromDeviceRPCResponseProto;
 import org.thingsboard.server.gen.transport.TransportProtos.ToCoreMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToCoreNotificationMsg;
+import org.thingsboard.server.gen.transport.TransportProtos.ToReplicaMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToRuleEngineMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToRuleEngineNotificationMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToTransportMsg;
@@ -68,11 +68,12 @@ import org.thingsboard.server.queue.common.TbProtoQueueMsg;
 import org.thingsboard.server.queue.discovery.NotificationsTopicService;
 import org.thingsboard.server.queue.discovery.PartitionService;
 import org.thingsboard.server.queue.provider.TbQueueProducerProvider;
+import org.thingsboard.server.queue.util.DataDecodingEncodingService;
 import org.thingsboard.server.service.gateway_device.GatewayNotificationsService;
 import org.thingsboard.server.service.ota.OtaPackageStateService;
 import org.thingsboard.server.service.profile.TbDeviceProfileCache;
 
-import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -90,6 +91,7 @@ public class DefaultTbClusterService implements TbClusterService {
     private String serviceType;
 
     private final AtomicInteger toCoreMsgs = new AtomicInteger(0);
+    private final AtomicInteger toReplicaMsgs = new AtomicInteger(0);
     private final AtomicInteger toCoreNfs = new AtomicInteger(0);
     private final AtomicInteger toRuleEngineMsgs = new AtomicInteger(0);
     private final AtomicInteger toRuleEngineNfs = new AtomicInteger(0);
@@ -282,6 +284,7 @@ public class DefaultTbClusterService implements TbClusterService {
 
     @Override
     public void onDeviceDeleted(Device device, TbQueueCallback callback) {
+        pushDeleteToReplica(device, null);
         broadcastEntityDeleteToTransport(device.getTenantId(), device.getId(), device.getName(), callback);
         sendDeviceStateServiceEvent(device.getTenantId(), device.getId(), false, false, true);
         broadcastEntityStateChangeEvent(device.getTenantId(), device.getId(), ComponentLifecycleEvent.DELETED);
@@ -428,6 +431,7 @@ public class DefaultTbClusterService implements TbClusterService {
     @Override
     public void onDeviceUpdated(Device device, Device old, boolean notifyEdge) {
         var created = old == null;
+        pushUpdateToReplica(device, null);
         broadcastEntityChangeToTransport(device.getTenantId(), device.getId(), device, null);
         if (old != null) {
             boolean deviceNameChanged = !device.getName().equals(old.getName());
@@ -444,6 +448,36 @@ public class DefaultTbClusterService implements TbClusterService {
         if (!created && notifyEdge) {
             sendNotificationMsgToEdge(device.getTenantId(), null, device.getId(), null, null, EdgeEventActionType.UPDATED);
         }
+    }
+
+    void pushUpdateToReplica(Device device, TbQueueCallback callback) {
+        pushMsgToReplica(device, callback, "UPDATE");
+    }
+
+    void pushDeleteToReplica(Device device, TbQueueCallback callback) {
+        pushMsgToReplica(device, callback, "DELETE");
+    }
+
+    void pushMsgToReplica(Device device, TbQueueCallback callback, String action) {
+        TopicPartitionInfo tpi = partitionService.resolve(ServiceType.TB_CORE, device.getTenantId(), device.getId());
+        log.trace("Push to replica msg: {} to:{}", device, tpi);
+        String json = JacksonUtil.toPrettyString(device);
+        ToReplicaMsg.Builder builder = ToReplicaMsg.newBuilder()
+                .setEntityType("DEVICE")
+                .setAction(Objects.requireNonNull(action, "action is null"))
+                .setTenantIdMSB(device.getTenantId().getId().getMostSignificantBits())
+                .setTenantIdLSB(device.getTenantId().getId().getLeastSignificantBits())
+                .setEntityIdMSB(device.getId().getId().getMostSignificantBits())
+                .setEntityIdLSB(device.getId().getId().getLeastSignificantBits())
+                .setData(json);
+        if (device.getCustomerId() != null) {
+            builder
+                    .setCustomerIdMSB(device.getCustomerId().getId().getMostSignificantBits())
+                    .setCustomerIdLSB(device.getCustomerId().getId().getLeastSignificantBits());
+        }
+
+        producerProvider.getTbReplicaMsgProducer().send(tpi, new TbProtoQueueMsg<>(device.getId().getId(), builder.build()), callback);
+        toReplicaMsgs.incrementAndGet();
     }
 
     @Override
