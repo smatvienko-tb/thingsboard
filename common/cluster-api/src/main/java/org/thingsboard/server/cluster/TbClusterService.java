@@ -18,15 +18,19 @@ package org.thingsboard.server.cluster;
 import org.thingsboard.server.common.data.ApiUsageState;
 import org.thingsboard.server.common.data.Device;
 import org.thingsboard.server.common.data.DeviceProfile;
+import org.thingsboard.server.common.data.HasName;
 import org.thingsboard.server.common.data.TbResource;
 import org.thingsboard.server.common.data.Tenant;
 import org.thingsboard.server.common.data.TenantProfile;
+import org.thingsboard.server.common.data.audit.ActionType;
 import org.thingsboard.server.common.data.edge.EdgeEventActionType;
 import org.thingsboard.server.common.data.edge.EdgeEventType;
+import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.EdgeId;
 import org.thingsboard.server.common.data.id.EntityId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.plugin.ComponentLifecycleEvent;
+import org.thingsboard.server.common.data.relation.EntityRelation;
 import org.thingsboard.server.common.msg.TbMsg;
 import org.thingsboard.server.common.msg.ToDeviceActorNotificationMsg;
 import org.thingsboard.server.common.msg.queue.TopicPartitionInfo;
@@ -40,6 +44,9 @@ import org.thingsboard.server.queue.TbQueueClusterService;
 
 import java.util.UUID;
 
+/*
+*
+* */
 public interface TbClusterService extends TbQueueClusterService {
 
     void pushMsgToCore(TopicPartitionInfo tpi, UUID msgKey, ToCoreMsg msg, TbQueueCallback callback);
@@ -82,6 +89,8 @@ public interface TbClusterService extends TbQueueClusterService {
 
     void onDeviceDeleted(Device device, TbQueueCallback callback);
 
+    void onDeviceDeleted(Device device, TbQueueCallback callback, boolean notifyEdge);
+
     void onResourceChange(TbResource resource, TbQueueCallback callback);
 
     void onResourceDeleted(TbResource resource, TbQueueCallback callback);
@@ -89,4 +98,8 @@ public interface TbClusterService extends TbQueueClusterService {
     void onEdgeEventUpdate(TenantId tenantId, EdgeId edgeId);
 
     void sendNotificationMsgToEdge(TenantId tenantId, EdgeId edgeId, EntityId entityId, String body, EdgeEventType type, EdgeEventActionType action);
+
+    <E extends HasName, I extends EntityId> void pushMsgToReplica(TenantId tenantId, CustomerId customerId, I entityId, E entity, ActionType actionType, TbQueueCallback callback);
+
+    void pushMsgToReplica(TenantId tenantId, CustomerId customerId, EntityRelation relation, ActionType actionType, TbQueueCallback callback);
 }

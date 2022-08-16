@@ -21,6 +21,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 import org.thingsboard.server.common.msg.queue.ServiceType;
 import org.thingsboard.server.gen.js.JsInvokeProtos;
+import org.thingsboard.server.gen.transport.TransportProtos;
 import org.thingsboard.server.gen.transport.TransportProtos.ToCoreMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToCoreNotificationMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.ToOtaPackageStateServiceMsg;
@@ -49,6 +50,7 @@ import org.thingsboard.server.queue.kafka.TbKafkaSettings;
 import org.thingsboard.server.queue.kafka.TbKafkaTopicConfigs;
 import org.thingsboard.server.queue.settings.TbQueueCoreSettings;
 import org.thingsboard.server.queue.settings.TbQueueRemoteJsInvokeSettings;
+import org.thingsboard.server.queue.settings.TbQueueReplicaResponseSettings;
 import org.thingsboard.server.queue.settings.TbQueueReplicaSettings;
 import org.thingsboard.server.queue.settings.TbQueueRuleEngineSettings;
 import org.thingsboard.server.queue.settings.TbQueueTransportApiSettings;
@@ -71,6 +73,7 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
     private final TbQueueRemoteJsInvokeSettings jsInvokeSettings;
     private final TbQueueVersionControlSettings vcSettings;
     private final TbQueueReplicaSettings replicaSettings;
+    private final TbQueueReplicaResponseSettings replicaResponseSettings;
     private final TbKafkaConsumerStatsService consumerStatsService;
     private final TbQueueTransportNotificationSettings transportNotificationSettings;
 
@@ -84,6 +87,7 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
     private final TbQueueAdmin fwUpdatesAdmin;
     private final TbQueueAdmin vcAdmin;
     private final TbQueueAdmin replicaAdmin;
+    private final TbQueueAdmin replicaResponseAdmin;
 
     public KafkaTbCoreQueueFactory(NotificationsTopicService notificationsTopicService,
                                    TbKafkaSettings kafkaSettings,
@@ -94,6 +98,7 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
                                    TbQueueRemoteJsInvokeSettings jsInvokeSettings,
                                    TbQueueVersionControlSettings vcSettings,
                                    TbQueueReplicaSettings replicaSettings,
+                                   TbQueueReplicaResponseSettings replicaResponseSettings,
                                    TbKafkaConsumerStatsService consumerStatsService,
                                    TbQueueTransportNotificationSettings transportNotificationSettings,
                                    TbKafkaTopicConfigs kafkaTopicConfigs) {
@@ -106,6 +111,7 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
         this.jsInvokeSettings = jsInvokeSettings;
         this.vcSettings = vcSettings;
         this.replicaSettings = replicaSettings;
+        this.replicaResponseSettings = replicaResponseSettings;
         this.consumerStatsService = consumerStatsService;
         this.transportNotificationSettings = transportNotificationSettings;
 
@@ -119,6 +125,7 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
         this.fwUpdatesAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getFwUpdatesConfigs());
         this.vcAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getVcConfigs());
         this.replicaAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getReplicaConfigs());
+        this.replicaResponseAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getReplicaResponseConfigs());
     }
 
     @Override
@@ -320,6 +327,18 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
         return requestBuilder.build();
     }
 
+    public TbQueueConsumer<TbProtoQueueMsg<TransportProtos.ToReplicaMsg>> createReplicaMsgConsumer() {
+        TbKafkaConsumerTemplate.TbKafkaConsumerTemplateBuilder<TbProtoQueueMsg<TransportProtos.ToReplicaMsg>> consumerBuilder = TbKafkaConsumerTemplate.builder();
+        consumerBuilder.settings(kafkaSettings);
+        consumerBuilder.topic(replicaResponseSettings.getTopic());
+        consumerBuilder.clientId("tb-replica-consumer-" + serviceInfoProvider.getServiceId());
+        consumerBuilder.groupId("tb-replica-node");
+        consumerBuilder.decoder(msg -> new TbProtoQueueMsg<>(msg.getKey(), TransportProtos.ToReplicaMsg.parseFrom(msg.getData()), msg.getHeaders()));
+        consumerBuilder.admin(replicaResponseAdmin);
+        consumerBuilder.statsService(consumerStatsService);
+        return consumerBuilder.build();
+    }
+
     @PreDestroy
     private void destroy() {
         if (coreAdmin != null) {
@@ -351,6 +370,9 @@ public class KafkaTbCoreQueueFactory implements TbCoreQueueFactory {
         }
         if (replicaAdmin != null) {
             replicaAdmin.destroy();
+        }
+        if (replicaResponseAdmin != null) {
+            replicaResponseAdmin.destroy();
         }
     }
 }

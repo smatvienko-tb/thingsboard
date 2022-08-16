@@ -16,6 +16,7 @@
 package org.thingsboard.server.queue.provider;
 
 import com.google.protobuf.util.JsonFormat;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
@@ -49,6 +50,7 @@ import org.thingsboard.server.queue.kafka.TbKafkaSettings;
 import org.thingsboard.server.queue.kafka.TbKafkaTopicConfigs;
 import org.thingsboard.server.queue.settings.TbQueueCoreSettings;
 import org.thingsboard.server.queue.settings.TbQueueRemoteJsInvokeSettings;
+import org.thingsboard.server.queue.settings.TbQueueReplicaResponseSettings;
 import org.thingsboard.server.queue.settings.TbQueueReplicaSettings;
 import org.thingsboard.server.queue.settings.TbQueueRuleEngineSettings;
 import org.thingsboard.server.queue.settings.TbQueueTransportApiSettings;
@@ -59,6 +61,7 @@ import javax.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicLong;
 
+@Slf4j
 @Component
 @ConditionalOnExpression("'${queue.type:null}'=='kafka' && '${service.type:null}'=='monolith'")
 public class KafkaMonolithQueueFactory implements TbCoreQueueFactory, TbRuleEngineQueueFactory, TbVersionControlQueueFactory {
@@ -73,6 +76,7 @@ public class KafkaMonolithQueueFactory implements TbCoreQueueFactory, TbRuleEngi
     private final TbQueueRemoteJsInvokeSettings jsInvokeSettings;
     private final TbQueueVersionControlSettings vcSettings;
     private final TbQueueReplicaSettings replicaSettings;
+    private final TbQueueReplicaResponseSettings replicaResponseSettings;
     private final TbKafkaConsumerStatsService consumerStatsService;
 
     private final TbQueueAdmin coreAdmin;
@@ -85,6 +89,7 @@ public class KafkaMonolithQueueFactory implements TbCoreQueueFactory, TbRuleEngi
     private final TbQueueAdmin fwUpdatesAdmin;
     private final TbQueueAdmin vcAdmin;
     private final TbQueueAdmin replicaAdmin;
+    private final TbQueueAdmin replicaResponseAdmin;
 
     private final AtomicLong consumerCount = new AtomicLong();
 
@@ -97,6 +102,7 @@ public class KafkaMonolithQueueFactory implements TbCoreQueueFactory, TbRuleEngi
                                      TbQueueRemoteJsInvokeSettings jsInvokeSettings,
                                      TbQueueVersionControlSettings vcSettings,
                                      TbQueueReplicaSettings replicaSettings,
+                                     TbQueueReplicaResponseSettings replicaResponseSettings,
                                      TbKafkaConsumerStatsService consumerStatsService,
                                      TbKafkaTopicConfigs kafkaTopicConfigs) {
         this.notificationsTopicService = notificationsTopicService;
@@ -109,6 +115,7 @@ public class KafkaMonolithQueueFactory implements TbCoreQueueFactory, TbRuleEngi
         this.jsInvokeSettings = jsInvokeSettings;
         this.vcSettings = vcSettings;
         this.replicaSettings = replicaSettings;
+        this.replicaResponseSettings = replicaResponseSettings;
         this.consumerStatsService = consumerStatsService;
 
         this.coreAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getCoreConfigs());
@@ -121,6 +128,7 @@ public class KafkaMonolithQueueFactory implements TbCoreQueueFactory, TbRuleEngi
         this.fwUpdatesAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getFwUpdatesConfigs());
         this.vcAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getVcConfigs());
         this.replicaAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getReplicaConfigs());
+        this.replicaResponseAdmin = new TbKafkaAdmin(kafkaSettings, kafkaTopicConfigs.getReplicaResponseConfigs());
     }
 
     @Override
@@ -354,12 +362,26 @@ public class KafkaMonolithQueueFactory implements TbCoreQueueFactory, TbRuleEngi
 
     @Override
     public TbQueueProducer<TbProtoQueueMsg<TransportProtos.ToReplicaMsg>> createReplicaMsgProducer() {
+        log.debug("Creating replica msg producer for [{}]", replicaSettings.getTopic());
         TbKafkaProducerTemplate.TbKafkaProducerTemplateBuilder<TbProtoQueueMsg<TransportProtos.ToReplicaMsg>> requestBuilder = TbKafkaProducerTemplate.builder();
         requestBuilder.settings(kafkaSettings);
         requestBuilder.clientId("tb-replica-producer-" + serviceInfoProvider.getServiceId());
         requestBuilder.defaultTopic(replicaSettings.getTopic());
         requestBuilder.admin(replicaAdmin);
         return requestBuilder.build();
+    }
+
+    @Override
+    public TbQueueConsumer<TbProtoQueueMsg<TransportProtos.ToReplicaMsg>> createReplicaMsgConsumer() {
+        TbKafkaConsumerTemplate.TbKafkaConsumerTemplateBuilder<TbProtoQueueMsg<TransportProtos.ToReplicaMsg>> consumerBuilder = TbKafkaConsumerTemplate.builder();
+        consumerBuilder.settings(kafkaSettings);
+        consumerBuilder.topic(replicaResponseSettings.getTopic());
+        consumerBuilder.clientId("monolith-tb-replica-consumer-" + serviceInfoProvider.getServiceId());
+        consumerBuilder.groupId("monolith-tb-replica-node");
+        consumerBuilder.decoder(msg -> new TbProtoQueueMsg<>(msg.getKey(), TransportProtos.ToReplicaMsg.parseFrom(msg.getData()), msg.getHeaders()));
+        consumerBuilder.admin(replicaResponseAdmin);
+        consumerBuilder.statsService(consumerStatsService);
+        return consumerBuilder.build();
     }
 
     @PreDestroy
@@ -393,6 +415,9 @@ public class KafkaMonolithQueueFactory implements TbCoreQueueFactory, TbRuleEngi
         }
         if (replicaAdmin != null) {
             replicaAdmin.destroy();
+        }
+        if (replicaResponseAdmin != null) {
+            replicaResponseAdmin.destroy();
         }
     }
 }

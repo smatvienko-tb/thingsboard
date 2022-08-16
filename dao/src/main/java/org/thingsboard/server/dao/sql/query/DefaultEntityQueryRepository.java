@@ -15,6 +15,7 @@
  */
 package org.thingsboard.server.dao.sql.query;
 
+import io.micrometer.core.instrument.util.TimeUtils;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -60,6 +61,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Repository
@@ -297,6 +299,10 @@ public class DefaultEntityQueryRepository implements EntityQueryRepository {
     @Value("${sql.relations.max_level:50}")
     int maxLevelAllowed; //This value has to be reasonable small to prevent infinite recursion as early as possible
 
+    @Getter
+    @Value("${spring.data.jpa.properties.javax.persistence.query.timeout:30000}")
+    int queryTimeout;
+
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
     private final DefaultQueryLogComponent queryLog;
@@ -305,6 +311,7 @@ public class DefaultEntityQueryRepository implements EntityQueryRepository {
         this.jdbcTemplate = jdbcTemplate;
         this.transactionTemplate = transactionTemplate;
         this.queryLog = queryLog;
+        jdbcTemplate.getJdbcTemplate().setQueryTimeout((int)TimeUnit.MILLISECONDS.toSeconds(queryTimeout));
     }
 
     @Override

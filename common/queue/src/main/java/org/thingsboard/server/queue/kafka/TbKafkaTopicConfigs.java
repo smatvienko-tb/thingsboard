@@ -46,6 +46,8 @@ public class TbKafkaTopicConfigs {
     private String vcProperties;
     @Value("${queue.kafka.topic-properties.replica:}")
     private String replicaProperties;
+    @Value("${queue.kafka.topic-properties.replica-response:}")
+    private String replicaResponseProperties;
 
     @Getter
     private Map<String, String> coreConfigs;
@@ -67,6 +69,8 @@ public class TbKafkaTopicConfigs {
     private Map<String, String> vcConfigs;
     @Getter
     private Map<String, String> replicaConfigs;
+    @Getter
+    private Map<String, String> replicaResponseConfigs;
 
     @PostConstruct
     private void init() {
@@ -82,6 +86,7 @@ public class TbKafkaTopicConfigs {
         fwUpdatesConfigs = getConfigs(fwUpdatesProperties);
         vcConfigs = getConfigs(vcProperties);
         replicaConfigs = getConfigs(replicaProperties);
+        replicaResponseConfigs = getConfigs(replicaResponseProperties);
     }
 
     private Map<String, String> getConfigs(String properties) {

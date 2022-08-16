@@ -213,25 +213,27 @@ public class DeviceServiceImpl extends AbstractCachedEntityService<DeviceCacheKe
         }
         DeviceCacheEvictEvent deviceCacheEvictEvent = new DeviceCacheEvictEvent(device.getTenantId(), device.getId(), device.getName(), oldDevice != null ? oldDevice.getName() : null);
         try {
-            DeviceProfile deviceProfile;
-            if (device.getDeviceProfileId() == null) {
-                if (!StringUtils.isEmpty(device.getType())) {
-                    deviceProfile = this.deviceProfileService.findOrCreateDeviceProfile(device.getTenantId(), device.getType());
+            if (doValidate) { //do not change anything in device if no validation required, might not compatible with Edge feature
+                DeviceProfile deviceProfile;
+                if (device.getDeviceProfileId() == null) {
+                    if (!StringUtils.isEmpty(device.getType())) {
+                        deviceProfile = this.deviceProfileService.findOrCreateDeviceProfile(device.getTenantId(), device.getType());
+                    } else {
+                        deviceProfile = this.deviceProfileService.findDefaultDeviceProfile(device.getTenantId());
+                    }
+                    device.setDeviceProfileId(new DeviceProfileId(deviceProfile.getId().getId()));
                 } else {
-                    deviceProfile = this.deviceProfileService.findDefaultDeviceProfile(device.getTenantId());
+                    deviceProfile = this.deviceProfileService.findDeviceProfileById(device.getTenantId(), device.getDeviceProfileId());
+                    if (deviceProfile == null) {
+                        throw new DataValidationException("Device is referencing non existing device profile!");
+                    }
+                    if (!deviceProfile.getTenantId().equals(device.getTenantId())) {
+                        throw new DataValidationException("Device can`t be referencing to device profile from different tenant!");
+                    }
                 }
-                device.setDeviceProfileId(new DeviceProfileId(deviceProfile.getId().getId()));
-            } else {
-                deviceProfile = this.deviceProfileService.findDeviceProfileById(device.getTenantId(), device.getDeviceProfileId());
-                if (deviceProfile == null) {
-                    throw new DataValidationException("Device is referencing non existing device profile!");
-                }
-                if (!deviceProfile.getTenantId().equals(device.getTenantId())) {
-                    throw new DataValidationException("Device can`t be referencing to device profile from different tenant!");
-                }
+                device.setType(deviceProfile.getName());
+                device.setDeviceData(syncDeviceData(deviceProfile, device.getDeviceData()));
             }
-            device.setType(deviceProfile.getName());
-            device.setDeviceData(syncDeviceData(deviceProfile, device.getDeviceData()));
             Device result = deviceDao.saveAndFlush(device.getTenantId(), device);
             publishEvictEvent(deviceCacheEvictEvent);
             return result;

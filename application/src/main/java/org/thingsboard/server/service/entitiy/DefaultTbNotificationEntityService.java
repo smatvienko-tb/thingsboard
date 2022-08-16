@@ -94,6 +94,8 @@ public class DefaultTbNotificationEntityService implements TbNotificationEntityS
         } else if (e == null) {
             entityActionService.pushEntityActionToRuleEngine(entityId, entity, tenantId, customerId, actionType, null, additionalInfo);
         }
+
+        tbClusterService.pushMsgToReplica(tenantId, customerId, entityId, entity, actionType, null);
     }
 
     @Override
@@ -133,7 +135,6 @@ public class DefaultTbNotificationEntityService implements TbNotificationEntityS
                                                                                                User user, boolean sendToEdge,
                                                                                                Object... additionalInfo) {
         logEntityAction(tenantId, entityId, entity, customerId, actionType, user, additionalInfo);
-
         if (sendToEdge) {
             sendEntityAssignToCustomerNotificationMsg(tenantId, entityId, customerId, edgeTypeByActionType(actionType));
         }
@@ -152,12 +153,24 @@ public class DefaultTbNotificationEntityService implements TbNotificationEntityS
     public void notifyCreateOrUpdateTenant(Tenant tenant, ComponentLifecycleEvent event) {
         tbClusterService.onTenantChange(tenant, null);
         tbClusterService.broadcastEntityStateChangeEvent(tenant.getId(), tenant.getId(), event);
+        //audit log message will not be written without user
+        tbClusterService.pushMsgToReplica(tenant.getTenantId(), null, tenant.getId(), tenant, toActionType(event), null);
+    }
+
+    ActionType toActionType(ComponentLifecycleEvent event) {
+        switch (event) {
+            case CREATED: return ActionType.ADDED;
+            case DELETED: return ActionType.DELETED;
+            default: return ActionType.UPDATED;
+        }
     }
 
     @Override
     public void notifyDeleteTenant(Tenant tenant) {
         tbClusterService.onTenantDelete(tenant, null);
         tbClusterService.broadcastEntityStateChangeEvent(tenant.getId(), tenant.getId(), ComponentLifecycleEvent.DELETED);
+        //audit log will not be written without user
+        tbClusterService.pushMsgToReplica(tenant.getTenantId(), null, tenant.getId(), tenant, ActionType.DELETED, null);
     }
 
     @Override
@@ -173,7 +186,6 @@ public class DefaultTbNotificationEntityService implements TbNotificationEntityS
                                    List<EdgeId> relatedEdgeIds, User user, Object... additionalInfo) {
         gatewayNotificationsService.onDeviceDeleted(device);
         tbClusterService.onDeviceDeleted(device, null);
-
         notifyDeleteEntity(tenantId, deviceId, device, customerId, ActionType.DELETED, relatedEdgeIds, user, additionalInfo);
     }
 
@@ -260,6 +272,7 @@ public class DefaultTbNotificationEntityService implements TbNotificationEntityS
                                ActionType actionType, Object... additionalInfo) {
         logEntityAction(tenantId, relation.getFrom(), null, customerId, actionType, user, additionalInfo);
         logEntityAction(tenantId, relation.getTo(), null, customerId, actionType, user, additionalInfo);
+        tbClusterService.pushMsgToReplica(tenantId, customerId, relation, actionType,null);
         try {
             if (!relation.getFrom().getEntityType().equals(EntityType.EDGE) && !relation.getTo().getEntityType().equals(EntityType.EDGE)) {
                 sendNotificationMsgToEdge(tenantId, null, null, JacksonUtil.toString(relation),

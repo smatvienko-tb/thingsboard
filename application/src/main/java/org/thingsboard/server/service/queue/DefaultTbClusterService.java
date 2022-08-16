@@ -36,8 +36,10 @@ import org.thingsboard.server.common.data.HasName;
 import org.thingsboard.server.common.data.TbResource;
 import org.thingsboard.server.common.data.Tenant;
 import org.thingsboard.server.common.data.TenantProfile;
+import org.thingsboard.server.common.data.audit.ActionType;
 import org.thingsboard.server.common.data.edge.EdgeEventActionType;
 import org.thingsboard.server.common.data.edge.EdgeEventType;
+import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.DeviceId;
 import org.thingsboard.server.common.data.id.DeviceProfileId;
 import org.thingsboard.server.common.data.id.EdgeId;
@@ -46,6 +48,7 @@ import org.thingsboard.server.common.data.id.RuleChainId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.plugin.ComponentLifecycleEvent;
 import org.thingsboard.server.common.data.queue.Queue;
+import org.thingsboard.server.common.data.relation.EntityRelation;
 import org.thingsboard.server.common.msg.TbMsg;
 import org.thingsboard.server.common.msg.ToDeviceActorNotificationMsg;
 import org.thingsboard.server.common.msg.edge.EdgeEventUpdateMsg;
@@ -73,10 +76,11 @@ import org.thingsboard.server.service.gateway_device.GatewayNotificationsService
 import org.thingsboard.server.service.ota.OtaPackageStateService;
 import org.thingsboard.server.service.profile.TbDeviceProfileCache;
 
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static java.util.Objects.requireNonNull;
 
 @Service
 @Slf4j
@@ -284,7 +288,11 @@ public class DefaultTbClusterService implements TbClusterService {
 
     @Override
     public void onDeviceDeleted(Device device, TbQueueCallback callback) {
-        pushDeleteToReplica(device, null);
+        onDeviceDeleted(device, callback, true);
+    }
+
+    @Override
+    public void onDeviceDeleted(Device device, TbQueueCallback callback, boolean notifyEdge) {
         broadcastEntityDeleteToTransport(device.getTenantId(), device.getId(), device.getName(), callback);
         sendDeviceStateServiceEvent(device.getTenantId(), device.getId(), false, false, true);
         broadcastEntityStateChangeEvent(device.getTenantId(), device.getId(), ComponentLifecycleEvent.DELETED);
@@ -431,7 +439,6 @@ public class DefaultTbClusterService implements TbClusterService {
     @Override
     public void onDeviceUpdated(Device device, Device old, boolean notifyEdge) {
         var created = old == null;
-        pushUpdateToReplica(device, null);
         broadcastEntityChangeToTransport(device.getTenantId(), device.getId(), device, null);
         if (old != null) {
             boolean deviceNameChanged = !device.getName().equals(old.getName());
@@ -450,34 +457,63 @@ public class DefaultTbClusterService implements TbClusterService {
         }
     }
 
-    void pushUpdateToReplica(Device device, TbQueueCallback callback) {
-        pushMsgToReplica(device, callback, "UPDATE");
+    @Override
+    public <E extends HasName, I extends EntityId> void pushMsgToReplica(TenantId tenantId, CustomerId customerId, I entityId,
+                                                                         E entity, ActionType actionType, TbQueueCallback callback) {
+        if (entity == null) { // filter out null entities like Relations, etc.
+            return;
+        }
+        if (!filterToReplica(tenantId, customerId, entityId)) {
+            log.debug("Filtered out for replica: [{}] [{}] [{}]", tenantId, customerId, entityId);
+            return;
+        }
+        log.debug("Push to replica msg: {}", entity);
+        String json = JacksonUtil.toPrettyString(entity);
+        String entityType = entityId.getEntityType().name();
+        String action = actionType.name();
+        doPushMsgToReplica(tenantId, customerId, entityId, entityType, json, action, callback);
     }
 
-    void pushDeleteToReplica(Device device, TbQueueCallback callback) {
-        pushMsgToReplica(device, callback, "DELETE");
+    @Override
+    public void pushMsgToReplica(TenantId tenantId, CustomerId customerId, EntityRelation relation, ActionType actionType, TbQueueCallback callback) {
+        if (!filterToReplica(tenantId, customerId, relation.getFrom())) {
+            log.debug("Filtered out for replica by relation from: [{}] [{}] [{}]", tenantId, customerId, relation.getFrom());
+            return;
+        }
+        if (!filterToReplica(tenantId, customerId, relation.getTo())) {
+            log.debug("Filtered out for replica by relation to: [{}] [{}] [{}]", tenantId, customerId, relation.getTo());
+            return;
+        }
+        String json = JacksonUtil.toPrettyString(relation);
+        String entityType = "RELATION";
+        String action = actionType.name();
+        doPushMsgToReplica(tenantId, customerId, relation.getFrom(), entityType, json, action, callback);
     }
 
-    void pushMsgToReplica(Device device, TbQueueCallback callback, String action) {
-        TopicPartitionInfo tpi = partitionService.resolve(ServiceType.TB_CORE, device.getTenantId(), device.getId());
-        log.trace("Push to replica msg: {} to:{}", device, tpi);
-        String json = JacksonUtil.toPrettyString(device);
+    <I extends EntityId> void doPushMsgToReplica(TenantId tenantId, CustomerId customerId, I entityId, String entityType,
+                                                 String body, String action, TbQueueCallback callback) {
         ToReplicaMsg.Builder builder = ToReplicaMsg.newBuilder()
-                .setEntityType("DEVICE")
-                .setAction(Objects.requireNonNull(action, "action is null"))
-                .setTenantIdMSB(device.getTenantId().getId().getMostSignificantBits())
-                .setTenantIdLSB(device.getTenantId().getId().getLeastSignificantBits())
-                .setEntityIdMSB(device.getId().getId().getMostSignificantBits())
-                .setEntityIdLSB(device.getId().getId().getLeastSignificantBits())
-                .setData(json);
-        if (device.getCustomerId() != null) {
+                .setEntityType(entityType)
+                .setAction(action)
+                .setTenantIdMSB(tenantId.getId().getMostSignificantBits())
+                .setTenantIdLSB(tenantId.getId().getLeastSignificantBits())
+                .setEntityIdMSB(entityId.getId().getMostSignificantBits())
+                .setEntityIdLSB(entityId.getId().getLeastSignificantBits())
+                .setData(body);
+        if (customerId != null) {
             builder
-                    .setCustomerIdMSB(device.getCustomerId().getId().getMostSignificantBits())
-                    .setCustomerIdLSB(device.getCustomerId().getId().getLeastSignificantBits());
+                    .setCustomerIdMSB(customerId.getId().getMostSignificantBits())
+                    .setCustomerIdLSB(customerId.getId().getLeastSignificantBits());
         }
 
-        producerProvider.getTbReplicaMsgProducer().send(tpi, new TbProtoQueueMsg<>(device.getId().getId(), builder.build()), callback);
+        TopicPartitionInfo tpi = partitionService.resolve(ServiceType.TB_REPLICA, tenantId, entityId);
+        producerProvider.getTbReplicaMsgProducer().send(tpi, new TbProtoQueueMsg<>(entityId.getId(), builder.build()), callback);
         toReplicaMsgs.incrementAndGet();
+        log.debug("toReplicaMsgs [{}]", toReplicaMsgs.get());
+    }
+
+    <I extends EntityId> boolean filterToReplica(TenantId tenantId, CustomerId customerId, I entityId) {
+        return true;
     }
 
     @Override

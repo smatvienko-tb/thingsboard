@@ -20,8 +20,6 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
-import org.springframework.core.annotation.Order;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.thingsboard.common.util.JacksonUtil;
@@ -37,6 +35,7 @@ import org.thingsboard.server.common.msg.queue.ServiceType;
 import org.thingsboard.server.common.msg.queue.TbCallback;
 import org.thingsboard.server.common.msg.rpc.FromDeviceRpcResponse;
 import org.thingsboard.server.common.stats.StatsFactory;
+import org.thingsboard.server.gen.transport.TransportProtos.ToReplicaMsg;
 import org.thingsboard.server.queue.util.DataDecodingEncodingService;
 import org.thingsboard.server.dao.tenant.TbTenantProfileCache;
 import org.thingsboard.server.gen.transport.TransportProtos;
@@ -70,13 +69,13 @@ import org.thingsboard.server.service.ota.OtaPackageStateService;
 import org.thingsboard.server.service.profile.TbDeviceProfileCache;
 import org.thingsboard.server.service.queue.processing.AbstractConsumerService;
 import org.thingsboard.server.service.queue.processing.IdMsgPair;
+import org.thingsboard.server.service.replica.TbReplicaService;
 import org.thingsboard.server.service.rpc.TbCoreDeviceRpcService;
 import org.thingsboard.server.service.rpc.ToDeviceRpcRequestActorMsg;
 import org.thingsboard.server.service.state.DeviceStateService;
 import org.thingsboard.server.service.subscription.SubscriptionManagerService;
 import org.thingsboard.server.service.subscription.TbLocalSubscriptionService;
 import org.thingsboard.server.service.subscription.TbSubscriptionUtils;
-import org.thingsboard.server.service.sync.vc.EntitiesVersionControlService;
 import org.thingsboard.server.service.sync.vc.GitVersionControlQueueService;
 import org.thingsboard.server.service.transport.msg.TransportToDeviceActorMsgWrapper;
 
@@ -113,6 +112,7 @@ public class DefaultTbCoreConsumerService extends AbstractConsumerService<ToCore
     private int firmwarePackSize;
 
     private final TbQueueConsumer<TbProtoQueueMsg<ToCoreMsg>> mainConsumer;
+    private final TbQueueConsumer<TbProtoQueueMsg<ToReplicaMsg>> replicaConsumer;
     private final DeviceStateService stateService;
     private final TbApiUsageStateService statsService;
     private final TbLocalSubscriptionService localSubscriptionService;
@@ -121,6 +121,7 @@ public class DefaultTbCoreConsumerService extends AbstractConsumerService<ToCore
     private final EdgeNotificationService edgeNotificationService;
     private final OtaPackageStateService firmwareStateService;
     private final GitVersionControlQueueService vcQueueService;
+    private final TbReplicaService replicaService;
     private final TbCoreConsumerStats stats;
     protected final TbQueueConsumer<TbProtoQueueMsg<ToUsageStatsServiceMsg>> usageStatsConsumer;
     private final TbQueueConsumer<TbProtoQueueMsg<ToOtaPackageStateServiceMsg>> firmwareStatesConsumer;
@@ -128,6 +129,8 @@ public class DefaultTbCoreConsumerService extends AbstractConsumerService<ToCore
     protected volatile ExecutorService usageStatsExecutor;
 
     private volatile ExecutorService firmwareStatesExecutor;
+
+    protected volatile ExecutorService replicaExecutor;
 
     public DefaultTbCoreConsumerService(TbCoreQueueFactory tbCoreQueueFactory,
                                         ActorSystemContext actorContext,
@@ -144,9 +147,11 @@ public class DefaultTbCoreConsumerService extends AbstractConsumerService<ToCore
                                         EdgeNotificationService edgeNotificationService,
                                         OtaPackageStateService firmwareStateService,
                                         GitVersionControlQueueService vcQueueService,
+                                        TbReplicaService replicaService,
                                         PartitionService partitionService) {
         super(actorContext, encodingService, tenantProfileCache, deviceProfileCache, apiUsageStateService, partitionService, tbCoreQueueFactory.createToCoreNotificationsMsgConsumer());
         this.mainConsumer = tbCoreQueueFactory.createToCoreMsgConsumer();
+        this.replicaConsumer = tbCoreQueueFactory.createReplicaMsgConsumer();
         this.usageStatsConsumer = tbCoreQueueFactory.createToUsageStatsServiceMsgConsumer();
         this.firmwareStatesConsumer = tbCoreQueueFactory.createToOtaPackageStateServiceMsgConsumer();
         this.stateService = stateService;
@@ -158,6 +163,7 @@ public class DefaultTbCoreConsumerService extends AbstractConsumerService<ToCore
         this.statsService = statsService;
         this.firmwareStateService = firmwareStateService;
         this.vcQueueService = vcQueueService;
+        this.replicaService = replicaService;
     }
 
     @PostConstruct
@@ -165,11 +171,17 @@ public class DefaultTbCoreConsumerService extends AbstractConsumerService<ToCore
         super.init("tb-core-consumer", "tb-core-notifications-consumer");
         this.usageStatsExecutor = Executors.newSingleThreadExecutor(ThingsBoardThreadFactory.forName("tb-core-usage-stats-consumer"));
         this.firmwareStatesExecutor = Executors.newSingleThreadExecutor(ThingsBoardThreadFactory.forName("tb-core-firmware-notifications-consumer"));
+        this.replicaExecutor = Executors.newCachedThreadPool(ThingsBoardThreadFactory.forName("tb-replica-consumer"));
     }
 
     @PreDestroy
     public void destroy() {
         super.destroy();
+        stopReplicaConsumers();
+        if (replicaExecutor != null) {
+            log.warn("destroying replicaExecutor");
+            replicaExecutor.shutdownNow();
+        }
         if (usageStatsExecutor != null) {
             usageStatsExecutor.shutdownNow();
         }
@@ -183,6 +195,7 @@ public class DefaultTbCoreConsumerService extends AbstractConsumerService<ToCore
         super.onApplicationEvent(event);
         launchUsageStatsConsumer();
         launchOtaPackageUpdateNotificationConsumer();
+        launchReplicaConsumers();
     }
 
     @Override
@@ -190,6 +203,12 @@ public class DefaultTbCoreConsumerService extends AbstractConsumerService<ToCore
         if (event.getServiceType().equals(getServiceType())) {
             log.info("Subscribing to partitions: {}", event.getPartitions());
             this.mainConsumer.subscribe(event.getPartitions());
+            this.replicaConsumer.subscribe(
+                    event
+                            .getPartitions()
+                            .stream()
+                            .map(tpi -> tpi.newByTopic(replicaConsumer.getTopic()))
+                            .collect(Collectors.toSet()));
             this.usageStatsConsumer.subscribe(
                     event
                             .getPartitions()
@@ -197,6 +216,7 @@ public class DefaultTbCoreConsumerService extends AbstractConsumerService<ToCore
                             .map(tpi -> tpi.newByTopic(usageStatsConsumer.getTopic()))
                             .collect(Collectors.toSet()));
         }
+
         this.firmwareStatesConsumer.subscribe();
     }
 
@@ -283,6 +303,37 @@ public class DefaultTbCoreConsumerService extends AbstractConsumerService<ToCore
             log.info("TB Core Consumer stopped.");
         });
     }
+
+    void launchReplicaConsumers() { //TODO implement
+        log.info("Launching Replica Consumer thread(s)");
+        replicaExecutor.submit(() -> {
+            log.info("TB Replica Consumer started.");
+            while (!stopped) {
+                try {
+                    List<TbProtoQueueMsg<ToReplicaMsg>> msgs = replicaConsumer.poll(pollDuration);
+                    if (msgs.isEmpty()) {
+                        continue;
+                    }
+                    log.info("Process msg size [{}]", msgs.size());
+                    msgs.forEach(replicaService::processReplicaMsg);
+                    
+                    replicaConsumer.commit();
+                } catch (Exception e) {
+                    if (!stopped) {
+                        log.warn("Failed to obtain messages from queue.", e);
+                        try {
+                            Thread.sleep(pollDuration);
+                        } catch (InterruptedException e2) {
+                            log.trace("Failed to wait until the server has capacity to handle new requests", e2);
+                        }
+                    }
+                }
+            }
+            log.info("TB Replica Consumer stopped.");
+        });
+    }
+
+
 
     private static class PendingMsgHolder {
         @Getter
@@ -555,6 +606,12 @@ public class DefaultTbCoreConsumerService extends AbstractConsumerService<ToCore
     private void throwNotHandled(Object msg, TbCallback callback) {
         log.warn("Message not handled: {}", msg);
         callback.onFailure(new RuntimeException("Message not handled!"));
+    }
+
+    void stopReplicaConsumers() {
+        if (replicaConsumer != null) {
+            replicaConsumer.unsubscribe();
+        }
     }
 
     @Override

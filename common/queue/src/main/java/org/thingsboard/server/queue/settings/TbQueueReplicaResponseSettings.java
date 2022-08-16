@@ -13,13 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.server.common.msg.queue;
+package org.thingsboard.server.queue.settings;
 
-public enum ServiceType {
+import lombok.Data;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Component;
 
-    TB_CORE, TB_RULE_ENGINE, TB_TRANSPORT, JS_EXECUTOR, TB_VC_EXECUTOR, TB_REPLICA;
+@Lazy
+@Data
+@Component
+public class TbQueueReplicaResponseSettings {
 
-    public static ServiceType of(String serviceType) {
-        return ServiceType.valueOf(serviceType.replace("-", "_").toUpperCase());
-    }
+    @Value("${queue.replica.response-topic:tb_replica_response}")
+    private String topic;
+
+    @Value("${queue.replica.partitions:12}")
+    private int partitions;
 }

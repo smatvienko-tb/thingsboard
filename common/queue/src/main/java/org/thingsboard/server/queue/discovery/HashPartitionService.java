@@ -18,6 +18,7 @@ package org.thingsboard.server.queue.discovery;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ import org.thingsboard.server.gen.transport.TransportProtos.ServiceInfo;
 import org.thingsboard.server.queue.discovery.event.ClusterTopologyChangeEvent;
 import org.thingsboard.server.queue.discovery.event.PartitionChangeEvent;
 import org.thingsboard.server.queue.discovery.event.ServiceListChangedEvent;
+import org.thingsboard.server.queue.settings.TbQueueReplicaSettings;
 import org.thingsboard.server.queue.util.AfterStartUp;
 
 import javax.annotation.PostConstruct;
@@ -60,6 +62,10 @@ public class HashPartitionService implements PartitionService {
     private String vcTopic;
     @Value("${queue.vc.partitions:10}")
     private Integer vcPartitions;
+
+    @Autowired
+    TbQueueReplicaSettings tbQueueReplicaSettings;
+
     @Value("${queue.partitions.hash_function_name:murmur3_128}")
     private String hashFunctionName;
 
@@ -100,6 +106,10 @@ public class HashPartitionService implements PartitionService {
         QueueKey vcKey = new QueueKey(ServiceType.TB_VC_EXECUTOR);
         partitionSizesMap.put(vcKey, vcPartitions);
         partitionTopicsMap.put(vcKey, vcTopic);
+
+        QueueKey replicaKey = new QueueKey(ServiceType.TB_REPLICA);
+        partitionSizesMap.put(replicaKey, tbQueueReplicaSettings.getPartitions());
+        partitionTopicsMap.put(replicaKey, tbQueueReplicaSettings.getTopic());
 
         if (!isTransport(serviceInfoProvider.getServiceType())) {
             doInitRuleEnginePartitions();

@@ -173,6 +173,11 @@ public class InMemoryMonolithQueueFactory implements TbCoreQueueFactory, TbRuleE
         return new InMemoryTbQueueProducer<>(storage, replicaSettings.getTopic());
     }
 
+    @Override
+    public TbQueueConsumer<TbProtoQueueMsg<ToReplicaMsg>> createReplicaMsgConsumer() {
+        return new InMemoryTbQueueConsumer<>(storage, replicaSettings.getTopic());
+    }
+
     @Scheduled(fixedRateString = "${queue.in_memory.stats.print-interval-ms:60000}")
     private void printInMemoryStats() {
         storage.printStats();
