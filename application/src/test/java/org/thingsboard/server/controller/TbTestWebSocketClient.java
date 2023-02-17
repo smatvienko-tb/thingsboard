@@ -47,6 +47,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class TbTestWebSocketClient extends WebSocketClient {
 
+    private static final long TIMEOUT = TimeUnit.SECONDS.toMillis(30);
     private volatile String lastMsg;
     private volatile CountDownLatch reply;
     private volatile CountDownLatch update;
@@ -110,21 +111,29 @@ public class TbTestWebSocketClient extends WebSocketClient {
     }
 
     public String waitForUpdate() {
-        return waitForUpdate(TimeUnit.SECONDS.toMillis(3));
+        return waitForUpdate(TIMEOUT);
     }
 
     public String waitForUpdate(long ms) {
         try {
-            update.await(ms, TimeUnit.MILLISECONDS);
+            if (!update.await(ms, TimeUnit.MILLISECONDS)) {
+                log.warn("Failed to await update (waiting time [{}]ms elapsed)", ms, new RuntimeException("stacktrace"));
+            }
         } catch (InterruptedException e) {
-            log.warn("Failed to await reply", e);
+            log.warn("Failed to await update", e);
         }
         return lastMsg;
     }
 
     public String waitForReply() {
+        return waitForReply(TIMEOUT);
+    }
+
+    public String waitForReply(long ms) {
         try {
-            reply.await(3, TimeUnit.SECONDS);
+            if (!reply.await(ms, TimeUnit.MILLISECONDS)) {
+                log.warn("Failed to await reply (waiting time [{}]ms elapsed)", ms, new RuntimeException("stacktrace"));
+            }
         } catch (InterruptedException e) {
             log.warn("Failed to await reply", e);
         }
