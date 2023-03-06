@@ -32,6 +32,7 @@ import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -46,10 +47,10 @@ import static io.netty.handler.codec.mqtt.MqttQoS.AT_MOST_ONCE;
 @Slf4j
 public class MqttTransportHandler extends ChannelInboundHandlerAdapter implements GenericFutureListener<Future<? super Void>> {
 
-    private final List<MqttMessageType> eventsFromClient;
+    private final Collection<MqttMessageType> eventsFromClient;
     private final UUID sessionId;
 
-    MqttTransportHandler(List<MqttMessageType> eventsFromClient) {
+    MqttTransportHandler(Collection<MqttMessageType> eventsFromClient) {
         this.sessionId = UUID.randomUUID();
         this.eventsFromClient = eventsFromClient;
     }
@@ -76,6 +77,7 @@ public class MqttTransportHandler extends ChannelInboundHandlerAdapter implement
     }
 
     void processMqttMsg(ChannelHandlerContext ctx, MqttMessage msg) {
+        log.warn("processMqttMsg {}, {}", ctx, msg);
         if (msg.fixedHeader() == null) {
             ctx.close();
             return;

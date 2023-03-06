@@ -30,14 +30,15 @@ import io.netty.handler.codec.mqtt.MqttMessageType;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Collection;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class MqttServer {
 
     @Getter
-    private final List<MqttMessageType> eventsFromClient = new CopyOnWriteArrayList<>();
+    private final Collection<MqttMessageType> eventsFromClient = new ConcurrentLinkedQueue<>();
     @Getter
     private final int mqttPort = 8885;
 
@@ -75,9 +76,13 @@ public class MqttServer {
         log.info("Stopping MQTT transport!");
         try {
             serverChannel.close().sync();
+            log.info("Stopping MQTT transport (sync with close future)!");
+            serverChannel.closeFuture().sync();
         } finally {
-            workerGroup.shutdownGracefully();
-            bossGroup.shutdownGracefully();
+            log.info("shutdownGracefully workerGroup");
+            workerGroup.shutdownGracefully(0, 0, TimeUnit.MILLISECONDS).sync();
+            log.info("shutdownGracefully bossGroup");
+            bossGroup.shutdownGracefully(0, 0, TimeUnit.MILLISECONDS).sync();
         }
         log.info("MQTT transport stopped!");
     }

@@ -35,7 +35,7 @@ final class MqttPingHandler extends ChannelInboundHandlerAdapter {
 
     private final int keepaliveSeconds;
 
-    private ScheduledFuture<?> pingRespTimeout;
+    private volatile ScheduledFuture<?> pingRespTimeout;
 
     MqttPingHandler(int keepaliveSeconds) {
         this.keepaliveSeconds = keepaliveSeconds;
@@ -53,6 +53,7 @@ final class MqttPingHandler extends ChannelInboundHandlerAdapter {
         } else if (message.fixedHeader().messageType() == MqttMessageType.PINGRESP) {
             this.handlePingResp(ctx.channel());
         } else {
+            log.warn("channelRead [{}]", msg);
             ctx.fireChannelRead(ReferenceCountUtil.retain(msg));
         }
     }
@@ -83,8 +84,10 @@ final class MqttPingHandler extends ChannelInboundHandlerAdapter {
 
         if (this.pingRespTimeout == null) {
             this.pingRespTimeout = channel.eventLoop().schedule(() -> {
-                MqttFixedHeader fixedHeader2 = new MqttFixedHeader(MqttMessageType.DISCONNECT, false, MqttQoS.AT_MOST_ONCE, false, 0);
-                channel.writeAndFlush(new MqttMessage(fixedHeader2)).addListener(ChannelFutureListener.CLOSE);
+                if (channel.isActive()) {
+                    MqttFixedHeader fixedHeader2 = new MqttFixedHeader(MqttMessageType.DISCONNECT, false, MqttQoS.AT_MOST_ONCE, false, 0);
+                    channel.writeAndFlush(new MqttMessage(fixedHeader2)).addListener(ChannelFutureListener.CLOSE);
+                }
                 //TODO: what do when the connection is closed ?
             }, this.keepaliveSeconds, TimeUnit.SECONDS);
         }

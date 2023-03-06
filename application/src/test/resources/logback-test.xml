@@ -14,7 +14,7 @@
     <logger name="org.springframework.boot.test" level="WARN"/>
     <logger name="org.apache.cassandra" level="WARN"/>
     <logger name="org.testcontainers" level="INFO" />
-    <logger name="org.eclipse.leshan" level="INFO"/>
+    <logger name="org.thingsboard.mqtt" level="DEBUG"/>
     <logger name="org.thingsboard.server.controller.AbstractWebTest" level="INFO"/>
 
 

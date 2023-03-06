@@ -45,6 +45,7 @@ import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.concurrent.DefaultPromise;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.Promise;
+import io.netty.util.concurrent.ScheduledFuture;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
@@ -78,12 +79,14 @@ final class MqttClientImpl implements MqttClient {
 
     private final MqttHandler defaultHandler;
 
-    private EventLoopGroup eventLoop;
+    private volatile EventLoopGroup eventLoop;
 
     private volatile Channel channel;
 
     private volatile boolean disconnected = false;
     private volatile boolean reconnect = false;
+
+    private volatile ScheduledFuture<?> reconnectFuture;
     private String host;
     private int port;
     private MqttClientCallback callback;
@@ -133,7 +136,7 @@ final class MqttClientImpl implements MqttClient {
     }
 
     private Future<MqttConnectResult> connect(String host, int port, boolean reconnect) {
-        log.trace("[{}] Connecting to server, isReconnect - {}", channel != null ? channel.id() : "UNKNOWN", reconnect);
+        log.warn("[{}] Connecting to server, isReconnect - {}", channel != null ? channel.id() : "UNKNOWN", reconnect);
         if (this.eventLoop == null) {
             this.eventLoop = new NioEventLoopGroup();
         }
@@ -181,13 +184,16 @@ final class MqttClientImpl implements MqttClient {
         return connectFuture;
     }
 
-    private void scheduleConnectIfRequired(String host, int port, boolean reconnect) {
-        log.trace("[{}] Scheduling connect to server, isReconnect - {}", channel != null ? channel.id() : "UNKNOWN", reconnect);
+    private synchronized void scheduleConnectIfRequired(String host, int port, boolean reconnect) {
+        log.warn("[{}] Scheduling connect to server, isReconnect - {}", channel != null ? channel.id() : "UNKNOWN", reconnect);
         if (clientConfig.isReconnect() && !disconnected) {
             if (reconnect) {
                 this.reconnect = true;
             }
-            eventLoop.schedule((Runnable) () -> connect(host, port, reconnect), clientConfig.getReconnectDelay(), TimeUnit.SECONDS);
+            this.reconnectFuture = eventLoop.schedule(() -> {
+                connect(host, port, reconnect);
+                this.reconnectFuture = null;
+                }, clientConfig.getReconnectDelay(), TimeUnit.SECONDS);
         }
     }
 
@@ -414,9 +420,11 @@ final class MqttClientImpl implements MqttClient {
     }
 
     @Override
-    public void disconnect() {
+    public synchronized void disconnect() {
         log.trace("[{}] Disconnecting from server", channel != null ? channel.id() : "UNKNOWN");
         disconnected = true;
+        Optional.ofNullable(reconnectFuture).ifPresent(future -> future.cancel(true));
+
         if (this.channel != null) {
             MqttMessage message = new MqttMessage(new MqttFixedHeader(MqttMessageType.DISCONNECT, false, MqttQoS.AT_MOST_ONCE, false, 0));
             this.sendAndFlushPacket(message).addListener(future1 -> channel.close());
