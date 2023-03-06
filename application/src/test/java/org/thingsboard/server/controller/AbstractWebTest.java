@@ -29,14 +29,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.hamcrest.Matcher;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.rules.TestRule;
-import org.junit.rules.TestWatcher;
-import org.junit.runner.Description;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
@@ -183,17 +179,6 @@ public abstract class AbstractWebTest extends AbstractInMemoryStorageTest {
     @SpyBean
     protected MailService mailService;
 
-    @Rule
-    public TestRule watcher = new TestWatcher() {
-        protected void starting(Description description) {
-            log.info("Starting test: {}", description.getMethodName());
-        }
-
-        protected void finished(Description description) {
-            log.info("Finished test: {}", description.getMethodName());
-        }
-    };
-
     @Autowired
     void setConverters(HttpMessageConverter<?>[] converters) {
 
@@ -211,6 +196,7 @@ public abstract class AbstractWebTest extends AbstractInMemoryStorageTest {
                 this.mappingJackson2HttpMessageConverter);
     }
 
+    @BeforeEach
     @Before
     public void setupWebTest() throws Exception {
         log.debug("Executing web test setup");
@@ -279,6 +265,7 @@ public abstract class AbstractWebTest extends AbstractInMemoryStorageTest {
         }).when(mailService).sendResetPasswordEmailAsync(anyString(), anyString());
     }
 
+    @AfterEach
     @After
     public void teardownWebTest() throws Exception {
         log.debug("Executing web test teardown");
