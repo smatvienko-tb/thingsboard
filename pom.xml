@@ -128,7 +128,8 @@
         <awaitility.version>4.1.0</awaitility.version>
         <dbunit.version>2.7.2</dbunit.version>
         <java-websocket.version>1.5.2</java-websocket.version>
-        <jupiter.version>5.8.2</jupiter.version> <!-- keep the same version as spring-boot-starter-test depend on jupiter-->
+        <jupiter.version>5.9.2</jupiter.version> <!-- keep the compatible version with spring-boot-starter-test depend on jupiter-->
+        <junit-platform.version>1.9.2</junit-platform.version> <!-- keep the compatible version as spring-boot-starter-test depend on jupiter-->
         <json-path.version>2.6.0</json-path.version>
         <mock-server.version>5.13.1</mock-server.version>
         <spring-test-dbunit.version>1.3.0</spring-test-dbunit.version> <!-- 2016 -->
@@ -138,7 +139,7 @@
         <assertj.version>3.23.1</assertj.version>
         <rest-assured.version>5.2.0</rest-assured.version>
         <hamcrest.version>1.3</hamcrest.version>
-        <testcontainers.version>1.17.3</testcontainers.version>
+        <testcontainers.version>1.17.6</testcontainers.version>
         <zeroturnaround.version>1.12</zeroturnaround.version>
         <opensmpp.version>3.0.0</opensmpp.version>
         <jgit.version>6.1.0.202203080745-r</jgit.version>
@@ -1625,6 +1626,12 @@
                 </exclusions>
             </dependency>
             <dependency>
+                <groupId>org.junit.platform</groupId>
+                <artifactId>junit-platform-suite</artifactId>
+                <version>${junit-platform.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
                 <groupId>org.testng</groupId>
                 <artifactId>testng</artifactId>
                 <version>${testng.version}</version>
@@ -1740,6 +1747,12 @@
             <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>jdbc</artifactId>
+                <version>${testcontainers.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>junit-jupiter</artifactId>
                 <version>${testcontainers.version}</version>
                 <scope>test</scope>
             </dependency>
