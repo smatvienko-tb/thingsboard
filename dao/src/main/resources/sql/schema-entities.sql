@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS attribute_kv (
   dbl_v double precision,
   json_v json,
   last_update_ts bigint,
+  version bigint DEFAULT 0,
   CONSTRAINT attribute_kv_pkey PRIMARY KEY (entity_id, attribute_type, attribute_key)
 );
 

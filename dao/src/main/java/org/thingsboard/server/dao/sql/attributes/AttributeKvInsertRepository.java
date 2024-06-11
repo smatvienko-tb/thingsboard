@@ -42,14 +42,16 @@ public abstract class AttributeKvInsertRepository {
     private static final ThreadLocal<Pattern> PATTERN_THREAD_LOCAL = ThreadLocal.withInitial(() -> Pattern.compile(String.valueOf(Character.MIN_VALUE)));
     private static final String EMPTY_STR = "";
 
-    private static final String BATCH_UPDATE = "UPDATE attribute_kv SET str_v = ?, long_v = ?, dbl_v = ?, bool_v = ?, json_v =  cast(? AS json), last_update_ts = ? " +
-            "WHERE entity_id = ? and attribute_type =? and attribute_key = ?;";
+    private static final String BATCH_UPDATE = "UPDATE attribute_kv SET str_v = ?, long_v = ?, dbl_v = ?, bool_v = ?, json_v =  cast(? AS json), last_update_ts = ?, version = version + 1 " +
+            "WHERE entity_id = ? and attribute_type =? and attribute_key = ? " +
+            "RETURNING version;";
 
     private static final String INSERT_OR_UPDATE =
             "INSERT INTO attribute_kv (entity_id, attribute_type, attribute_key, str_v, long_v, dbl_v, bool_v, json_v, last_update_ts) " +
                     "VALUES(?, ?, ?, ?, ?, ?, ?,  cast(? AS json), ?) " +
                     "ON CONFLICT (entity_id, attribute_type, attribute_key) " +
-                    "DO UPDATE SET str_v = ?, long_v = ?, dbl_v = ?, bool_v = ?, json_v =  cast(? AS json), last_update_ts = ?;";
+                    "DO UPDATE SET str_v = ?, long_v = ?, dbl_v = ?, bool_v = ?, json_v =  cast(? AS json), last_update_ts = ?, version = version + 1 " +
+                    "RETURNING version;";
 
     @Autowired
     protected JdbcTemplate jdbcTemplate;
