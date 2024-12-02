@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 public class ThingsBoardExecutors {
 
     /**
-     * Method forked from ExecutorService to provide thread poll name
+     * Method forked from ExecutorService to provide thread pool name
      *
      * Creates a thread pool that maintains enough threads to support
      * the given parallelism level, and may use multiple queues to
@@ -71,6 +71,11 @@ public class ThingsBoardExecutors {
 
     public static ScheduledExecutorService newScheduledThreadPool(int corePoolSize, String name) {
         return new ThingsBoardScheduledThreadPoolExecutor(corePoolSize, ThingsBoardThreadFactory.forName(name));
+    }
+
+
+    /** Cannot instantiate. */
+    private ThingsBoardExecutors() {
     }
 
 }

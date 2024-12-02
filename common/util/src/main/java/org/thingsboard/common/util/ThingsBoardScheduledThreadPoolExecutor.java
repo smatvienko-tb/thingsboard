@@ -17,9 +17,7 @@ package org.thingsboard.common.util;
 
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
+import java.util.Objects;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
@@ -33,66 +31,26 @@ final class ThingsBoardScheduledThreadPoolExecutor extends ScheduledThreadPoolEx
     }
 
     @Override
-    protected void afterExecute(Runnable r, Throwable t) {
-        super.afterExecute(r, t);
-        logExceptionsAfterExecute(r, t);
-    }
-
-    private static void logExceptionsAfterExecute(Runnable r, Throwable directThrowable) {
-        Throwable wrappedThrowable = extractThrowableWrappedInFuture(r);
-        if (wrappedThrowable != null) {
-            if (wrappedThrowable instanceof CancellationException) {
-                log.debug("Task was cancelled.", wrappedThrowable);
-            } else {
-                log.error("Uncaught error occurred during task execution!", wrappedThrowable);
-            }
-        }
-
-        if (directThrowable != null) { // should never be true since ScheduledThreadPoolExecutor wraps tasks in Future's
-            log.error("Caught direct throwable from task submitted to the scheduled thread pool executor!", directThrowable);
-        }
-    }
-
-    private static Throwable extractThrowableWrappedInFuture(Runnable runnable) {
-        if (runnable instanceof Future<?> future && future.isDone()) {
-            try {
-                future.get();
-            } catch (InterruptedException e) { // should not happen due to isDone() check
-                throw new AssertionError("InterruptedException caught after isDone() check on a future", e);
-            } catch (CancellationException e) {
-                return e;
-            } catch (ExecutionException e) {
-                return e.getCause();
-            }
-        }
-        return null;
-    }
-
-    @Override
     public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
-        if (command == null) { // preserve the original NPE behavior of ScheduledThreadPoolExecutor with a more helpful message
-            throw new NullPointerException("command is null");
-        }
+        Objects.requireNonNull(command);
         return super.scheduleAtFixedRate(new SafePeriodicRunnable(command), initialDelay, period, unit);
     }
 
     @Override
     public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit) {
-        if (command == null) { // preserve the original NPE behavior of ScheduledThreadPoolExecutor with a more helpful message
-            throw new NullPointerException("command is null");
-        }
+        Objects.requireNonNull(command);
         return super.scheduleWithFixedDelay(new SafePeriodicRunnable(command), initialDelay, delay, unit);
     }
 
     private record SafePeriodicRunnable(Runnable runnable) implements Runnable {
 
+        @Override
         public void run() {
             try {
                 runnable.run();
-            } catch (Exception ex) {
-                log.error("Uncaught exception occurred during periodic task execution!", ex);
+            } catch (Exception e) {
+                log.error("Uncaught exception occurred during periodic task execution!", e);
             }
-            // Intentionally, no catch block for Throwable; uncaught Throwables will be handled in afterExecute()
         }
 
     }
