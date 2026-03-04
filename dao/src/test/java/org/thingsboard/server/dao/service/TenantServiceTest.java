@@ -732,4 +732,44 @@ public class TenantServiceTest extends AbstractServiceTest {
         tenantProfile.setName("Test tenant profile");
         return tenantProfileService.saveTenantProfile(TenantId.SYS_TENANT_ID, tenantProfile);
     }
+
+    @Test
+    public void testIsTenantActiveDefault() {
+        Tenant tenant = new Tenant();
+        tenant.setTitle("Active tenant");
+        Tenant savedTenant = tenantService.saveTenant(tenant);
+        Assert.assertTrue("New tenant should be active by default", savedTenant.isActive());
+        Assert.assertTrue(tenantService.isTenantActive(savedTenant.getId()));
+        tenantService.deleteTenant(savedTenant.getId());
+    }
+
+    @Test
+    public void testDeactivateTenant() {
+        Tenant tenant = new Tenant();
+        tenant.setTitle("Tenant to deactivate");
+        Tenant savedTenant = tenantService.saveTenant(tenant);
+        Assert.assertTrue(tenantService.isTenantActive(savedTenant.getId()));
+
+        savedTenant.setActive(false);
+        tenantService.saveTenant(savedTenant);
+
+        Assert.assertFalse(tenantService.isTenantActive(savedTenant.getId()));
+        tenantService.deleteTenant(savedTenant.getId());
+    }
+
+    @Test
+    public void testReactivateTenant() {
+        Tenant tenant = new Tenant();
+        tenant.setTitle("Tenant to reactivate");
+        Tenant savedTenant = tenantService.saveTenant(tenant);
+
+        savedTenant.setActive(false);
+        savedTenant = tenantService.saveTenant(savedTenant);
+        Assert.assertFalse(tenantService.isTenantActive(savedTenant.getId()));
+
+        savedTenant.setActive(true);
+        tenantService.saveTenant(savedTenant);
+        Assert.assertTrue(tenantService.isTenantActive(savedTenant.getId()));
+        tenantService.deleteTenant(savedTenant.getId());
+    }
 }

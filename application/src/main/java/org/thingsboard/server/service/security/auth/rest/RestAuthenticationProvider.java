@@ -18,6 +18,7 @@ package org.thingsboard.server.service.security.auth.rest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -35,6 +36,7 @@ import org.thingsboard.server.common.data.security.model.UserPasswordPolicy;
 import org.thingsboard.server.dao.customer.CustomerService;
 import org.thingsboard.server.exception.DataValidationException;
 import org.thingsboard.server.dao.settings.SecuritySettingsService;
+import org.thingsboard.server.dao.tenant.TenantService;
 import org.thingsboard.server.dao.user.UserService;
 import org.thingsboard.server.queue.util.TbCoreComponent;
 import org.thingsboard.server.service.security.auth.AbstractAuthenticationProvider;
@@ -55,18 +57,21 @@ public class RestAuthenticationProvider extends AbstractAuthenticationProvider {
     private final SecuritySettingsService securitySettingsService;
     private final UserService userService;
     private final TwoFactorAuthService twoFactorAuthService;
+    private final TenantService tenantService;
 
     @Autowired
     public RestAuthenticationProvider(final UserService userService,
                                       final CustomerService customerService,
                                       final SystemSecurityService systemSecurityService,
                                       SecuritySettingsService securitySettingsService,
-                                      TwoFactorAuthService twoFactorAuthService) {
+                                      TwoFactorAuthService twoFactorAuthService,
+                                      TenantService tenantService) {
         super(customerService, null);
         this.userService = userService;
         this.systemSecurityService = systemSecurityService;
         this.securitySettingsService = securitySettingsService;
         this.twoFactorAuthService = twoFactorAuthService;
+        this.tenantService = tenantService;
     }
 
     @Override
@@ -130,6 +135,10 @@ public class RestAuthenticationProvider extends AbstractAuthenticationProvider {
 
             if (user.getAuthority() == null) {
                 throw new InsufficientAuthenticationException("User has no authority assigned");
+            }
+
+            if (!user.getTenantId().isSysTenantId() && !tenantService.isTenantActive(user.getTenantId())) {
+                throw new DisabledException("Tenant is inactive");
             }
 
             return new SecurityUser(user, userCredentials.isEnabled(), userPrincipal);

@@ -123,6 +123,7 @@ public class ModelConstants {
     public static final String TENANT_REGION_PROPERTY = "region";
     public static final String TENANT_ADDITIONAL_INFO_PROPERTY = ADDITIONAL_INFO_PROPERTY;
     public static final String TENANT_TENANT_PROFILE_ID_PROPERTY = "tenant_profile_id";
+    public static final String TENANT_ACTIVE_PROPERTY = "active";
 
     /**
      * Tenant profile constants.

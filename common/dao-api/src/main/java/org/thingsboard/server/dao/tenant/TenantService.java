@@ -57,4 +57,6 @@ public interface TenantService extends EntityDaoService {
 
     List<Tenant> findTenantsByIds(TenantId callerId, List<TenantId> tenantIds);
 
+    boolean isTenantActive(TenantId tenantId);
+
 }

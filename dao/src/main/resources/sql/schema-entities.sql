@@ -475,6 +475,7 @@ CREATE TABLE IF NOT EXISTS tenant (
     title varchar(255),
     zip varchar(255),
     version BIGINT DEFAULT 1,
+    active boolean NOT NULL DEFAULT true,
     CONSTRAINT fk_tenant_profile FOREIGN KEY (tenant_profile_id) REFERENCES tenant_profile(id)
 );
 

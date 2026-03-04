@@ -48,6 +48,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 import org.springframework.web.util.WebUtils;
 import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.server.common.data.EntityType;
+import org.thingsboard.server.common.data.exception.TenantInactiveException;
 import org.thingsboard.server.common.data.exception.ThingsboardErrorCode;
 import org.thingsboard.server.common.data.exception.ThingsboardException;
 import org.thingsboard.server.common.msg.tools.MaxPayloadSizeExceededException;
@@ -154,6 +155,8 @@ public class ThingsboardErrorResponseHandler extends ResponseEntityExceptionHand
                     } else {
                         handleThingsboardException(thingsboardException, response);
                     }
+                } else if (exception instanceof TenantInactiveException tenantInactiveException) {
+                    handleTenantInactiveException(response, tenantInactiveException);
                 } else if (exception instanceof TbRateLimitsException rateLimitsException) {
                     handleRateLimitException(response, rateLimitsException);
                 } else if (exception instanceof AccessDeniedException) {
@@ -192,6 +195,13 @@ public class ThingsboardErrorResponseHandler extends ResponseEntityExceptionHand
         HttpStatus status = errorCodeToStatus(errorCode);
         response.setStatus(status.value());
         JacksonUtil.writeValue(response.getWriter(), ThingsboardErrorResponse.of(thingsboardException.getMessage(), errorCode, status));
+    }
+
+    private void handleTenantInactiveException(HttpServletResponse response, TenantInactiveException exception) throws IOException {
+        response.setStatus(HttpStatus.FORBIDDEN.value());
+        JacksonUtil.writeValue(response.getWriter(),
+                ThingsboardErrorResponse.of(exception.getMessage(),
+                        ThingsboardErrorCode.AUTHENTICATION, HttpStatus.FORBIDDEN));
     }
 
     private void handleRateLimitException(HttpServletResponse response, TbRateLimitsException exception) throws IOException {
@@ -253,7 +263,9 @@ public class ThingsboardErrorResponseHandler extends ResponseEntityExceptionHand
         if (authenticationException instanceof BadCredentialsException || authenticationException instanceof UsernameNotFoundException) {
             JacksonUtil.writeValue(response.getWriter(), ThingsboardErrorResponse.of("Invalid username or password", ThingsboardErrorCode.AUTHENTICATION, HttpStatus.UNAUTHORIZED));
         } else if (authenticationException instanceof DisabledException) {
-            JacksonUtil.writeValue(response.getWriter(), ThingsboardErrorResponse.of("User account is not active", ThingsboardErrorCode.AUTHENTICATION, HttpStatus.UNAUTHORIZED));
+            String message = "Tenant is inactive".equals(authenticationException.getMessage())
+                    ? "Tenant is inactive" : "User account is not active";
+            JacksonUtil.writeValue(response.getWriter(), ThingsboardErrorResponse.of(message, ThingsboardErrorCode.AUTHENTICATION, HttpStatus.UNAUTHORIZED));
         } else if (authenticationException instanceof LockedException) {
             JacksonUtil.writeValue(response.getWriter(), ThingsboardErrorResponse.of("User account is locked due to security policy", ThingsboardErrorCode.AUTHENTICATION, HttpStatus.UNAUTHORIZED));
         } else if (authenticationException instanceof JwtExpiredTokenException) {
