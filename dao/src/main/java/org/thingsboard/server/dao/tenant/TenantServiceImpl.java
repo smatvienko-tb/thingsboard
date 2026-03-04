@@ -238,6 +238,12 @@ public class TenantServiceImpl extends AbstractCachedEntityService<TenantId, Ten
         return existsTenantCache.getAndPutInTransaction(tenantId, () -> tenantDao.existsById(tenantId, tenantId.getId()), false);
     }
 
+    @Override
+    public boolean isTenantActive(TenantId tenantId) {
+        Tenant tenant = findTenantById(tenantId);
+        return tenant != null && tenant.isActive();
+    }
+
     private final PaginatedRemover<TenantId, Tenant> tenantsRemover = new PaginatedRemover<>() {
 
         @Override

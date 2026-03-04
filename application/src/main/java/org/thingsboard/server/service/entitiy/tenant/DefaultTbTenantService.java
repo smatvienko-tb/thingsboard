@@ -65,6 +65,18 @@ public class DefaultTbTenantService extends AbstractTbEntityService implements T
     }
 
     @Override
+    public Tenant activate(Tenant tenant) throws Exception {
+        tenant.setActive(true);
+        return tenantService.saveTenant(tenant);
+    }
+
+    @Override
+    public Tenant deactivate(Tenant tenant) throws Exception {
+        tenant.setActive(false);
+        return tenantService.saveTenant(tenant);
+    }
+
+    @Override
     public void delete(Tenant tenant) throws Exception {
         TenantId tenantId = tenant.getId();
         tenantService.deleteTenant(tenantId);

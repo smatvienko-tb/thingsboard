@@ -118,6 +118,32 @@ public class TenantController extends BaseController {
         return tbTenantService.save(tenant);
     }
 
+    @ApiOperation(value = "Activate Tenant (activateTenant)",
+            notes = "Activates the tenant, allowing its users to log in and use the API. " + SYSTEM_AUTHORITY_PARAGRAPH)
+    @PreAuthorize("hasAuthority('SYS_ADMIN')")
+    @PostMapping(value = "/tenant/{tenantId}/activate")
+    public Tenant activateTenant(
+            @Parameter(description = TENANT_ID_PARAM_DESCRIPTION)
+            @PathVariable(TENANT_ID) String strTenantId) throws Exception {
+        checkParameter(TENANT_ID, strTenantId);
+        TenantId tenantId = TenantId.fromUUID(toUUID(strTenantId));
+        Tenant tenant = checkTenantId(tenantId, Operation.WRITE);
+        return tbTenantService.activate(tenant);
+    }
+
+    @ApiOperation(value = "Deactivate Tenant (deactivateTenant)",
+            notes = "Deactivates the tenant, blocking its users from logging in or using the API. " + SYSTEM_AUTHORITY_PARAGRAPH)
+    @PreAuthorize("hasAuthority('SYS_ADMIN')")
+    @PostMapping(value = "/tenant/{tenantId}/deactivate")
+    public Tenant deactivateTenant(
+            @Parameter(description = TENANT_ID_PARAM_DESCRIPTION)
+            @PathVariable(TENANT_ID) String strTenantId) throws Exception {
+        checkParameter(TENANT_ID, strTenantId);
+        TenantId tenantId = TenantId.fromUUID(toUUID(strTenantId));
+        Tenant tenant = checkTenantId(tenantId, Operation.WRITE);
+        return tbTenantService.deactivate(tenant);
+    }
+
     @ApiOperation(value = "Delete Tenant (deleteTenant)",
             notes = "Deletes the tenant, it's customers, rule chains, devices and all other related entities. Referencing non-existing tenant Id will cause an error." + SYSTEM_OR_TENANT_AUTHORITY_PARAGRAPH)
     @PreAuthorize("hasAnyAuthority('SYS_ADMIN', 'TENANT_ADMIN')")

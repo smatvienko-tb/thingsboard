@@ -13,18 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.server.service.entitiy.tenant;
+package org.thingsboard.server.common.data.exception;
 
-import org.thingsboard.server.common.data.Tenant;
+public class TenantInactiveException extends RuntimeException {
 
-public interface TbTenantService {
-
-    Tenant save(Tenant tenant) throws Exception;
-
-    void delete(Tenant tenant) throws Exception;
-
-    Tenant activate(Tenant tenant) throws Exception;
-
-    Tenant deactivate(Tenant tenant) throws Exception;
+    public TenantInactiveException() {
+        super("Tenant is inactive");
+    }
 
 }

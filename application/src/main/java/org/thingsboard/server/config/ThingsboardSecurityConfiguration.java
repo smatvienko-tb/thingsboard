@@ -141,6 +141,9 @@ public class ThingsboardSecurityConfiguration {
     private RateLimitProcessingFilter rateLimitProcessingFilter;
 
     @Autowired
+    private TenantActiveFilter tenantActiveFilter;
+
+    @Autowired
     private AuthExceptionHandler authExceptionHandler;
 
     @Bean
@@ -268,6 +271,7 @@ public class ThingsboardSecurityConfiguration {
                 .addFilterBefore(buildRefreshTokenProcessingFilter(), UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(payloadSizeFilter(), UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(rateLimitProcessingFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(tenantActiveFilter, RateLimitProcessingFilter.class)
                 .addFilterBefore(authExceptionHandler, buildRestLoginProcessingFilter().getClass());
         if (oauth2Configuration != null) {
             http.oauth2Login(login -> login

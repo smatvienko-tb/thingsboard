@@ -943,4 +943,98 @@ public class TenantControllerTest extends AbstractControllerTest {
         Mockito.reset(tbClusterService);
     }
 
+    @Test
+    public void testActivateDeactivateTenant() throws Exception {
+        loginSysAdmin();
+        // Create a separate tenant with its own admin user
+        Tenant tenant = new Tenant();
+        tenant.setTitle("Test inactive tenant");
+        Tenant savedTenant = saveTenant(tenant);
+        Assert.assertTrue("New tenant should be active by default", savedTenant.isActive());
+
+        User newTenantAdmin = new User();
+        newTenantAdmin.setAuthority(Authority.TENANT_ADMIN);
+        newTenantAdmin.setTenantId(savedTenant.getId());
+        newTenantAdmin.setEmail("inactive.tenant.admin@test.com");
+        createUser(newTenantAdmin, "password");
+
+        // Deactivate the tenant as SYS_ADMIN
+        loginSysAdmin();
+        Tenant deactivated = doPost("/api/tenant/" + savedTenant.getId().getId() + "/deactivate", null, Tenant.class);
+        Assert.assertFalse("Tenant should be inactive after deactivation", deactivated.isActive());
+
+        // SYS_ADMIN should still be able to read the tenant
+        Tenant found = doGet("/api/tenant/" + savedTenant.getId().getId(), Tenant.class);
+        Assert.assertNotNull(found);
+        Assert.assertFalse(found.isActive());
+
+        // The new tenant admin login should fail while tenant is inactive
+        doPost("/api/auth/login", new org.thingsboard.server.service.security.auth.rest.LoginRequest("inactive.tenant.admin@test.com", "password"))
+                .andExpect(status().isUnauthorized());
+
+        deleteTenant(savedTenant.getId());
+    }
+
+    @Test
+    public void testInactiveTenantApiBlocked() throws Exception {
+        loginSysAdmin();
+        Tenant tenant = new Tenant();
+        tenant.setTitle("Test blocked tenant");
+        Tenant savedTenant = saveTenant(tenant);
+
+        User newTenantAdmin = new User();
+        newTenantAdmin.setAuthority(Authority.TENANT_ADMIN);
+        newTenantAdmin.setTenantId(savedTenant.getId());
+        newTenantAdmin.setEmail("blocked.tenant.admin@test.com");
+        createUserAndLogin(newTenantAdmin, "password");
+
+        // Save token obtained before deactivation
+        String tenantAdminToken = this.token;
+
+        // Deactivate the tenant as SYS_ADMIN
+        loginSysAdmin();
+        doPost("/api/tenant/" + savedTenant.getId().getId() + "/deactivate", null, Tenant.class);
+
+        // Using the old token for a tenant admin API call should return 403
+        this.token = tenantAdminToken;
+        doGet("/api/tenant/" + savedTenant.getId().getId())
+                .andExpect(status().isForbidden());
+
+        deleteTenant(savedTenant.getId());
+    }
+
+    @Test
+    public void testActivateTenantRestoresAccess() throws Exception {
+        loginSysAdmin();
+        Tenant tenant = new Tenant();
+        tenant.setTitle("Test reactivated tenant");
+        Tenant savedTenant = saveTenant(tenant);
+
+        User newTenantAdmin = new User();
+        newTenantAdmin.setAuthority(Authority.TENANT_ADMIN);
+        newTenantAdmin.setTenantId(savedTenant.getId());
+        newTenantAdmin.setEmail("reactivated.tenant.admin@test.com");
+        createUser(newTenantAdmin, "password");
+
+        // Deactivate tenant
+        loginSysAdmin();
+        doPost("/api/tenant/" + savedTenant.getId().getId() + "/deactivate", null, Tenant.class);
+
+        // Verify login is blocked
+        doPost("/api/auth/login", new org.thingsboard.server.service.security.auth.rest.LoginRequest("reactivated.tenant.admin@test.com", "password"))
+                .andExpect(status().isUnauthorized());
+
+        // Reactivate tenant
+        Tenant activated = doPost("/api/tenant/" + savedTenant.getId().getId() + "/activate", null, Tenant.class);
+        Assert.assertTrue("Tenant should be active after activation", activated.isActive());
+
+        // Tenant admin should now be able to log in
+        login("reactivated.tenant.admin@test.com", "password");
+        Tenant found = doGet("/api/tenant/" + savedTenant.getId().getId(), Tenant.class);
+        Assert.assertNotNull(found);
+        Assert.assertTrue(found.isActive());
+
+        deleteTenant(savedTenant.getId());
+    }
+
 }

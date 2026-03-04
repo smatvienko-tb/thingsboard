@@ -45,6 +45,9 @@ public class Tenant extends ContactBased<TenantId> implements HasTenantId, HasTi
     @Schema(description = "JSON object with Tenant Profile Id")
     private TenantProfileId tenantProfileId;
 
+    @Schema(description = "Indicates whether the tenant is active. Inactive tenants cannot log in or use the API.", example = "true")
+    private boolean active = true;
+
     @Getter @Setter
     private Long version;
 
@@ -61,7 +64,16 @@ public class Tenant extends ContactBased<TenantId> implements HasTenantId, HasTi
         this.title = tenant.getTitle();
         this.region = tenant.getRegion();
         this.tenantProfileId = tenant.getTenantProfileId();
+        this.active = tenant.isActive();
         this.version = tenant.getVersion();
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
     }
 
     public String getTitle() {
@@ -197,6 +209,8 @@ public class Tenant extends ContactBased<TenantId> implements HasTenantId, HasTi
         builder.append(phone);
         builder.append(", email=");
         builder.append(email);
+        builder.append(", active=");
+        builder.append(active);
         builder.append(", createdTime=");
         builder.append(createdTime);
         builder.append(", id=");
