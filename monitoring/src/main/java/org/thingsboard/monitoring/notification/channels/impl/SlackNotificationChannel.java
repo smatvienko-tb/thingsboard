@@ -16,6 +16,7 @@
 package org.thingsboard.monitoring.notification.channels.impl;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -35,19 +36,67 @@ public class SlackNotificationChannel implements NotificationChannel {
     @Value("${monitoring.notifications.slack.webhook_url}")
     private String webhookUrl;
 
+    @Value("${monitoring.notifications.slack.bot_token:}")
+    private String botToken;
+
+    @Value("${monitoring.notifications.slack.channel_id:}")
+    private String channelId;
+
+    @Value("${monitoring.notifications.slack.incident.enabled:false}")
+    private boolean incidentEnabled;
+
+    @Value("${monitoring.notifications.slack.incident.resolution_timeout_s:60}")
+    private long resolutionTimeoutSeconds;
+
+    @Value("${monitoring.notifications.slack.incident.tag_channel:false}")
+    private boolean tagChannel;
+
+    @Value("${monitoring.notifications.message_prefix:}")
+    private String messagePrefix;
+
     private RestTemplate restTemplate;
+    private SlackApiClient slackApiClient;
+    private SlackIncidentManager incidentManager;
 
     @PostConstruct
     private void init() {
-        restTemplate = new RestTemplateBuilder()
-                .setConnectTimeout(Duration.ofSeconds(5))
-                .setReadTimeout(Duration.ofSeconds(2))
-                .build();
+        if (botToken != null && !botToken.isEmpty() && channelId != null && !channelId.isEmpty()) {
+            slackApiClient = new SlackApiClient(botToken);
+            log.info("Slack API mode enabled (channel: {})", channelId);
+            if (incidentEnabled) {
+                incidentManager = new SlackIncidentManager(slackApiClient, channelId, resolutionTimeoutSeconds, messagePrefix, tagChannel);
+                log.info("Slack incident grouping enabled (resolution timeout: {}s)", resolutionTimeoutSeconds);
+            }
+        } else {
+            restTemplate = new RestTemplateBuilder()
+                    .setConnectTimeout(Duration.ofSeconds(5))
+                    .setReadTimeout(Duration.ofSeconds(2))
+                    .build();
+            log.info("Slack webhook mode enabled");
+        }
     }
 
     @Override
     public void sendNotification(String message) {
-        restTemplate.postForObject(webhookUrl, Map.of("text", message), String.class);
+        sendNotification(message, true);
+    }
+
+    @Override
+    public void sendNotification(String message, boolean incident) {
+        if (incidentManager != null && incident) {
+            incidentManager.sendAlert(message);
+        } else if (slackApiClient != null) {
+            slackApiClient.postMessage(channelId, message);
+        } else {
+            restTemplate.postForObject(webhookUrl, Map.of("text", message), String.class);
+        }
+    }
+
+    @PreDestroy
+    private void destroy() {
+        if (incidentManager != null) {
+            incidentManager.shutdown();
+        }
     }
 
 }
