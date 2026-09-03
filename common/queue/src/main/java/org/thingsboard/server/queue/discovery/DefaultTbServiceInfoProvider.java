@@ -160,6 +160,11 @@ public class DefaultTbServiceInfoProvider implements TbServiceInfoProvider {
     }
 
     @Override
+    public boolean isReady() {
+        return ready;
+    }
+
+    @Override
     public boolean setReady(boolean ready) {
         boolean changed = this.ready != ready;
         this.ready = ready;
