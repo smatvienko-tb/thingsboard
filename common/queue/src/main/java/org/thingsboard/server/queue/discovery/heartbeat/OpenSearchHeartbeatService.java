@@ -16,7 +16,6 @@
 package org.thingsboard.server.queue.discovery.heartbeat;
 
 import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.lang.Nullable;
@@ -25,26 +24,20 @@ import org.springframework.stereotype.Component;
 import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.data.TbTransportService;
+import org.thingsboard.server.gen.transport.TransportProtos.ServiceInfo;
 import org.thingsboard.server.queue.discovery.TbServiceInfoProvider;
 
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.thingsboard.common.util.SystemUtil.getCpuCount;
 import static org.thingsboard.common.util.SystemUtil.getCpuUsage;
 import static org.thingsboard.common.util.SystemUtil.getDiscSpaceUsage;
@@ -53,10 +46,9 @@ import static org.thingsboard.common.util.SystemUtil.getTotalDiscSpace;
 import static org.thingsboard.common.util.SystemUtil.getTotalMemory;
 
 /**
- * Actively pushes a liveness document to OpenSearch on a fixed schedule, so that an external system can
- * tell that this service is alive without scraping it. This is deliberately independent of the
- * actuator/Micrometer endpoint Prometheus pulls from: a push path stays informative precisely when the
- * pull path is the broken thing.
+ * Actively pushes a liveness document to OpenSearch on a fixed schedule, so that an external system can tell
+ * that this instance is alive without scraping it. Deliberately independent of the actuator/Micrometer endpoint
+ * Prometheus pulls from: a push path stays informative precisely when the pull path is the broken thing.
  * <p>
  * Lives in {@code org.thingsboard.server.queue.discovery} because every ThingsBoard Java service already
  * component-scans that package and enables scheduling, so no per-service wiring is required.
@@ -68,9 +60,9 @@ public class OpenSearchHeartbeatService {
 
     private static final String EVENT_DATASET = "thingsboard.heartbeat";
     private static final long FAILURE_LOG_INTERVAL = 10;
-    private static final int MAX_LOGGED_RESPONSE_LENGTH = 256;
 
     private final OpenSearchHeartbeatConfig config;
+    private final OpenSearchClient client;
     private final TbServiceInfoProvider serviceInfoProvider;
     private final List<TbTransportService> transportServices;
 
@@ -78,76 +70,64 @@ public class OpenSearchHeartbeatService {
     private final AtomicLong sequence = new AtomicLong();
     private final AtomicLong consecutiveFailures = new AtomicLong();
 
-    private volatile boolean disabled;
-
-    private HttpClient httpClient;
-    private String baseUrl;
     private DateTimeFormatter indexDateFormatter;
-    private String authorizationHeader;
     private String serviceVersion;
     private String hostName;
+    private String processStartTime;
     private List<String> transportNames;
     private Map<String, String> labels;
 
     public OpenSearchHeartbeatService(OpenSearchHeartbeatConfig config,
+                                      OpenSearchClient client,
                                       TbServiceInfoProvider serviceInfoProvider,
                                       @Nullable List<TbTransportService> transportServices) {
         this.config = config;
+        this.client = client;
         this.serviceInfoProvider = serviceInfoProvider;
         this.transportServices = transportServices == null ? List.of() : transportServices;
     }
 
     @PostConstruct
     public void init() {
-        if (StringUtils.isBlank(config.getUrl())) {
-            // A misconfigured monitoring path must never stop the service it is meant to observe.
-            disabled = true;
-            log.error("OpenSearch heartbeat is enabled but 'heartbeat.opensearch.url' is not set. Heartbeat disabled.");
-            return;
-        }
-        String trimmedUrl = config.getUrl().trim();
-        baseUrl = trimmedUrl.endsWith("/") ? trimmedUrl.substring(0, trimmedUrl.length() - 1) : trimmedUrl;
-        indexDateFormatter = StringUtils.isBlank(config.getIndexDatePattern()) ? null
-                : DateTimeFormatter.ofPattern(config.getIndexDatePattern().trim()).withZone(ZoneOffset.UTC);
-        if (StringUtils.isNotBlank(config.getUsername())) {
-            String password = config.getPassword() == null ? "" : config.getPassword();
-            String credentials = config.getUsername() + ":" + password;
-            authorizationHeader = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(UTF_8));
-        }
+        indexDateFormatter = OpenSearchClient.dateFormatter(config.getIndexDatePattern());
         serviceVersion = resolveServiceVersion();
         hostName = resolveHostName();
+        processStartTime = DateTimeFormatter.ISO_INSTANT.format(
+                Instant.ofEpochMilli(ManagementFactory.getRuntimeMXBean().getStartTime()));
         transportNames = transportServices.stream()
                 .map(TbTransportService::getName)
                 .sorted()
                 .toList();
         labels = parseLabels(config.getLabels());
-        httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(config.getConnectTimeoutMs()))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
-        log.info("Pushing service heartbeat to OpenSearch at {} every {} ms", baseUrl, config.getIntervalMs());
+        if (isDisabled()) {
+            return;
+        }
+        log.info("Pushing service heartbeat to OpenSearch every {} ms (retry policy: {})",
+                config.getIntervalMs(), client.getRetryPolicy());
     }
 
     @Scheduled(fixedDelayString = "${heartbeat.opensearch.interval_ms:30000}")
     public void sendHeartbeat() {
-        if (disabled) {
+        if (isDisabled()) {
             return;
         }
-        // A hung OpenSearch must not let ticks pile up on the scheduler; the next tick is the retry.
+        // A hung OpenSearch must not let ticks pile up on the scheduler.
         if (!inFlight.compareAndSet(false, true)) {
             log.debug("Skipping heartbeat tick: previous push is still in flight");
             return;
         }
         try {
-            httpClient.sendAsync(buildRequest(), HttpResponse.BodyHandlers.ofString())
-                    .whenComplete((response, error) -> {
+            // The timestamp is stamped here, at build time, so a retried push still reports the moment this
+            // instance was actually alive rather than the moment the write happened to land.
+            String document = JacksonUtil.toString(buildHeartbeat());
+            String index = OpenSearchClient.datedIndex(config.getIndex(), indexDateFormatter);
+            client.index(index, document)
+                    .whenComplete((accepted, error) -> {
                         try {
-                            if (error != null) {
-                                onFailure(error.getMessage());
-                            } else if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                            if (error == null && Boolean.TRUE.equals(accepted)) {
                                 onSuccess();
                             } else {
-                                onFailure("HTTP " + response.statusCode() + " " + truncate(response.body()));
+                                onFailure(error == null ? "write rejected" : error.getMessage());
                             }
                         } finally {
                             inFlight.set(false);
@@ -159,49 +139,29 @@ public class OpenSearchHeartbeatService {
         }
     }
 
-    @PreDestroy
-    public void destroy() {
-        if (httpClient != null) {
-            httpClient.shutdownNow();
-        }
-    }
-
     public long getConsecutiveFailures() {
         return consecutiveFailures.get();
     }
 
     public boolean isDisabled() {
-        return disabled;
-    }
-
-    private HttpRequest buildRequest() {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(resolveEndpoint())
-                .timeout(Duration.ofMillis(config.getRequestTimeoutMs()))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(JacksonUtil.toString(buildHeartbeat()), UTF_8));
-        if (authorizationHeader != null) {
-            builder.header("Authorization", authorizationHeader);
-        }
-        return builder.build();
-    }
-
-    private URI resolveEndpoint() {
-        String index = config.getIndex();
-        if (indexDateFormatter != null) {
-            index = index + "-" + indexDateFormatter.format(Instant.now());
-        }
-        return URI.create(baseUrl + "/" + index + "/_doc");
+        return client.isDisabled();
     }
 
     private ServiceHeartbeat buildHeartbeat() {
+        ServiceInfo serviceInfo = serviceInfoProvider.getServiceInfo();
         return ServiceHeartbeat.builder()
                 .timestamp(DateTimeFormatter.ISO_INSTANT.format(Instant.now()))
                 .eventDataset(EVENT_DATASET)
                 .serviceId(serviceInfoProvider.getServiceId())
                 .serviceType(serviceInfoProvider.getServiceType())
+                .serviceTypes(emptyToNull(serviceInfo.getServiceTypesList()))
+                .taskTypes(emptyToNull(serviceInfo.getTaskTypesList()))
+                .assignedTenantProfiles(assignedTenantProfiles())
+                .serviceLabel(StringUtils.isBlank(serviceInfo.getLabel()) ? null : serviceInfo.getLabel())
                 .serviceVersion(serviceVersion)
                 .serviceReady(serviceInfoProvider.isReady())
                 .hostName(hostName)
+                .processStartTime(processStartTime)
                 .uptimeMs(ManagementFactory.getRuntimeMXBean().getUptime())
                 .sequence(sequence.incrementAndGet())
                 .cpuUsage(getCpuUsage().orElse(null))
@@ -210,9 +170,21 @@ public class OpenSearchHeartbeatService {
                 .memoryTotal(getTotalMemory().orElse(null))
                 .diskUsage(getDiscSpaceUsage().orElse(null))
                 .diskTotal(getTotalDiscSpace().orElse(null))
-                .transports(transportNames.isEmpty() ? null : transportNames)
+                .transports(emptyToNull(transportNames))
                 .labels(labels)
                 .build();
+    }
+
+    private List<String> assignedTenantProfiles() {
+        var profiles = serviceInfoProvider.getAssignedTenantProfiles();
+        if (profiles == null || profiles.isEmpty()) {
+            return null;
+        }
+        return profiles.stream().map(UUID::toString).sorted().toList();
+    }
+
+    private static List<String> emptyToNull(List<String> values) {
+        return values == null || values.isEmpty() ? null : values;
     }
 
     private void onSuccess() {
@@ -266,13 +238,6 @@ public class OpenSearchHeartbeatService {
             }
         }
         return parsed.isEmpty() ? null : parsed;
-    }
-
-    private static String truncate(String body) {
-        if (body == null) {
-            return "";
-        }
-        return body.length() <= MAX_LOGGED_RESPONSE_LENGTH ? body : body.substring(0, MAX_LOGGED_RESPONSE_LENGTH) + "...";
     }
 
 }

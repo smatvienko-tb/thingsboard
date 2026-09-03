@@ -432,3 +432,20 @@ heartbeat:
     connect_timeout_ms: "${TB_HEARTBEAT_OPENSEARCH_CONNECT_TIMEOUT_MS:3000}"
     # Request timeout for the push, in milliseconds. Keep below interval_ms so a stalled push cannot outlive its tick.
     request_timeout_ms: "${TB_HEARTBEAT_OPENSEARCH_REQUEST_TIMEOUT_MS:5000}"
+    # Retry policy for a failed heartbeat write. Overload (429) and server errors (5xx) plus transport faults
+    # are retried; a rejected request (4xx) is not, since retrying a misconfiguration only multiplies load.
+    retry:
+      # Total attempts per heartbeat, including the first. 1 disables retrying.
+      max_attempts: "${TB_HEARTBEAT_OPENSEARCH_RETRY_MAX_ATTEMPTS:3}"
+      # Delay before the second attempt, in milliseconds. Doubles per attempt by default.
+      initial_backoff_ms: "${TB_HEARTBEAT_OPENSEARCH_RETRY_INITIAL_BACKOFF_MS:500}"
+      # Multiplier applied to the delay after each failed attempt.
+      backoff_multiplier: "${TB_HEARTBEAT_OPENSEARCH_RETRY_BACKOFF_MULTIPLIER:2.0}"
+      # Upper bound for a single backoff delay, in milliseconds.
+      max_backoff_ms: "${TB_HEARTBEAT_OPENSEARCH_RETRY_MAX_BACKOFF_MS:5000}"
+      # Fraction of each delay randomised, e.g. 0.2 spreads a 1000 ms delay over 800-1200 ms. Keeps every
+      # instance in a cluster from retrying in lockstep after an outage.
+      jitter: "${TB_HEARTBEAT_OPENSEARCH_RETRY_JITTER:0.2}"
+      # Wall-clock budget for the whole retry chain of one heartbeat, in milliseconds. Automatically clamped
+      # below interval_ms so a retry chain cannot outlive the tick that started it.
+      budget_ms: "${TB_HEARTBEAT_OPENSEARCH_RETRY_BUDGET_MS:15000}"

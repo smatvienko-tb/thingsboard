@@ -38,11 +38,42 @@ public class ServiceHeartbeat {
     @JsonProperty("event.dataset")
     private final String eventDataset;
 
+    /**
+     * Identifies one instance. A microservice runs many instances, so this is the per-instance key;
+     * {@code service.type} is the key that groups them.
+     */
     @JsonProperty("service.id")
     private final String serviceId;
 
+    /**
+     * The configured {@code service.type}, e.g. {@code tb-core} or {@code monolith}. Shared by every instance
+     * of that microservice.
+     */
     @JsonProperty("service.type")
     private final String serviceType;
+
+    /**
+     * The {@link org.thingsboard.server.common.msg.queue.ServiceType}s this instance actually serves. A
+     * monolith serves all of them; a dedicated node serves one. This is what {@code service.type} alone cannot
+     * tell you, since one configured type can back several roles.
+     */
+    @JsonProperty("service.types")
+    private final List<String> serviceTypes;
+
+    /**
+     * Job types this instance is able to process, from its registered task processors.
+     */
+    @JsonProperty("service.task_types")
+    private final List<String> taskTypes;
+
+    /**
+     * Tenant profiles pinned to this instance, for an isolated rule engine.
+     */
+    @JsonProperty("service.assigned_tenant_profiles")
+    private final List<String> assignedTenantProfiles;
+
+    @JsonProperty("service.label")
+    private final String serviceLabel;
 
     @JsonProperty("service.version")
     private final String serviceVersion;
@@ -54,7 +85,14 @@ public class ServiceHeartbeat {
     private final String hostName;
 
     /**
-     * JVM uptime, so that a consumer can tell a restarted service from a continuously running one.
+     * Absolute JVM start time. Lets a consumer derive uptime itself, and spot a restart as a changed value
+     * rather than having to catch the uptime counter resetting between two heartbeats.
+     */
+    @JsonProperty("process.start_time")
+    private final String processStartTime;
+
+    /**
+     * Total JVM uptime, straight from {@code RuntimeMXBean.getUptime()}.
      */
     @JsonProperty("process.uptime.ms")
     private final long uptimeMs;
@@ -85,7 +123,7 @@ public class ServiceHeartbeat {
 
     /**
      * Transport names served by this process. All transports report {@code service.type: tb-transport},
-     * so this is what distinguishes an MQTT process from a CoAP one.
+     * so this is what distinguishes an MQTT instance from a CoAP one.
      */
     @JsonProperty("transports")
     private final List<String> transports;

@@ -22,6 +22,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.server.common.data.TbTransportService;
+import org.thingsboard.server.gen.transport.TransportProtos.ServiceInfo;
 import org.thingsboard.server.queue.discovery.TbServiceInfoProvider;
 
 import java.io.IOException;
@@ -30,18 +31,22 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.within;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -56,10 +61,21 @@ public class OpenSearchHeartbeatServiceTest {
     private HttpServer server;
     private volatile int responseCode = 201;
     private volatile CountDownLatch handlerGate;
+    /**
+     * Number of leading attempts the stub answers with 503. Letting the stub decide keeps retry tests
+     * deterministic; flipping {@link #responseCode} from the test thread races the retry chain.
+     */
+    private final AtomicInteger failFirstAttempts = new AtomicInteger(0);
 
     private OpenSearchHeartbeatConfig config;
     private TbServiceInfoProvider serviceInfoProvider;
     private OpenSearchHeartbeatService heartbeatService;
+    private OpenSearchClient client;
+
+    private String url;
+    private String username;
+    private String password;
+    private OpenSearchRetryPolicy retryPolicy;
 
     @BeforeEach
     public void setUp() throws IOException {
@@ -79,26 +95,35 @@ public class OpenSearchHeartbeatServiceTest {
                     exchange.getRequestURI().getPath(),
                     exchange.getRequestHeaders().getFirst("Authorization"),
                     new String(body, UTF_8)));
-            exchange.sendResponseHeaders(responseCode, -1);
+            boolean forcedFailure = failFirstAttempts.getAndUpdate(n -> n > 0 ? n - 1 : 0) > 0;
+            exchange.sendResponseHeaders(forcedFailure ? 503 : responseCode, -1);
             exchange.close();
         });
         server.setExecutor(Executors.newFixedThreadPool(4));
         server.start();
 
+        url = "http://localhost:" + server.getAddress().getPort();
+        username = null;
+        password = null;
+        // Retrying is off for the default fixture, so each test observes exactly the pushes it triggers.
+        retryPolicy = OpenSearchRetryPolicy.builder().maxAttempts(1).build();
+
         config = new OpenSearchHeartbeatConfig();
         config.setEnabled(true);
-        config.setUrl("http://localhost:" + server.getAddress().getPort());
         config.setIndex("tb-heartbeat");
         config.setIndexDatePattern("yyyy.MM.dd");
         config.setIntervalMs(30000);
-        config.setConnectTimeoutMs(2000);
-        config.setRequestTimeoutMs(3000);
         config.setAppVersion("4.4.0");
 
         serviceInfoProvider = mock(TbServiceInfoProvider.class);
         when(serviceInfoProvider.getServiceId()).thenReturn("tb-core-0");
         when(serviceInfoProvider.getServiceType()).thenReturn("tb-core");
         when(serviceInfoProvider.isReady()).thenReturn(true);
+        when(serviceInfoProvider.getAssignedTenantProfiles()).thenReturn(Set.of());
+        when(serviceInfoProvider.getServiceInfo()).thenReturn(ServiceInfo.newBuilder()
+                .setServiceId("tb-core-0")
+                .addAllServiceTypes(List.of("TB_CORE"))
+                .build());
     }
 
     @AfterEach
@@ -106,8 +131,8 @@ public class OpenSearchHeartbeatServiceTest {
         if (handlerGate != null) {
             handlerGate.countDown();
         }
-        if (heartbeatService != null) {
-            heartbeatService.destroy();
+        if (client != null) {
+            client.close();
         }
         server.stop(0);
     }
@@ -151,6 +176,63 @@ public class OpenSearchHeartbeatServiceTest {
     }
 
     @Test
+    public void givenMonolithServingEveryRole_whenSendHeartbeat_thenDocumentListsEveryServedType() {
+        when(serviceInfoProvider.getServiceType()).thenReturn("monolith");
+        when(serviceInfoProvider.getServiceInfo()).thenReturn(ServiceInfo.newBuilder()
+                .setServiceId("tb-monolith-0")
+                .addAllServiceTypes(List.of("TB_CORE", "TB_RULE_ENGINE", "TB_TRANSPORT", "EDQS"))
+                .build());
+        heartbeatService = newService();
+
+        heartbeatService.sendHeartbeat();
+
+        JsonNode doc = JacksonUtil.toJsonNode(awaitSingleRequest().body());
+        assertThat(doc.get("service.type").asText()).isEqualTo("monolith");
+        assertThat(doc.get("service.types")).hasSize(4);
+        assertThat(doc.get("service.types").toString())
+                .contains("TB_CORE", "TB_RULE_ENGINE", "TB_TRANSPORT", "EDQS");
+    }
+
+    @Test
+    public void givenTaskProcessors_whenSendHeartbeat_thenDocumentListsTaskTypes() {
+        when(serviceInfoProvider.getServiceInfo()).thenReturn(ServiceInfo.newBuilder()
+                .setServiceId("tb-core-0")
+                .addAllServiceTypes(List.of("TB_CORE"))
+                .addAllTaskTypes(List.of("CF_REPROCESSING"))
+                .build());
+        heartbeatService = newService();
+
+        heartbeatService.sendHeartbeat();
+
+        JsonNode doc = JacksonUtil.toJsonNode(awaitSingleRequest().body());
+        assertThat(doc.get("service.task_types").get(0).asText()).isEqualTo("CF_REPROCESSING");
+    }
+
+    @Test
+    public void givenIsolatedRuleEngine_whenSendHeartbeat_thenDocumentListsAssignedTenantProfiles() {
+        UUID profileId = UUID.randomUUID();
+        when(serviceInfoProvider.getAssignedTenantProfiles()).thenReturn(Set.of(profileId));
+        heartbeatService = newService();
+
+        heartbeatService.sendHeartbeat();
+
+        JsonNode doc = JacksonUtil.toJsonNode(awaitSingleRequest().body());
+        assertThat(doc.get("service.assigned_tenant_profiles").get(0).asText()).isEqualTo(profileId.toString());
+    }
+
+    @Test
+    public void givenNoAssignedProfilesOrTasks_whenSendHeartbeat_thenOmitsThoseFields() {
+        heartbeatService = newService();
+
+        heartbeatService.sendHeartbeat();
+
+        JsonNode doc = JacksonUtil.toJsonNode(awaitSingleRequest().body());
+        assertThat(doc.has("service.assigned_tenant_profiles")).isFalse();
+        assertThat(doc.has("service.task_types")).isFalse();
+        assertThat(doc.has("transports")).isFalse();
+    }
+
+    @Test
     public void givenServiceNotReady_whenSendHeartbeat_thenDocumentReportsNotReady() {
         when(serviceInfoProvider.isReady()).thenReturn(false);
         heartbeatService = newService();
@@ -162,6 +244,21 @@ public class OpenSearchHeartbeatServiceTest {
     }
 
     @Test
+    public void givenEnabledHeartbeat_whenSendHeartbeat_thenDocumentCarriesJvmUptimeAndStartTime() {
+        heartbeatService = newService();
+
+        heartbeatService.sendHeartbeat();
+
+        JsonNode doc = JacksonUtil.toJsonNode(awaitSingleRequest().body());
+        Instant startTime = Instant.parse(doc.get("process.start_time").asText());
+        long uptimeMs = doc.get("process.uptime.ms").asLong();
+        assertThat(uptimeMs).isPositive();
+        assertThat(startTime).isBefore(Instant.now());
+        // The two must describe the same process: start time plus uptime lands at roughly now.
+        assertThat(startTime.plusMillis(uptimeMs)).isCloseTo(Instant.now(), within(10, ChronoUnit.SECONDS));
+    }
+
+    @Test
     public void givenEnabledHeartbeat_whenSendHeartbeat_thenDocumentCarriesSystemMetrics() {
         heartbeatService = newService();
 
@@ -169,7 +266,6 @@ public class OpenSearchHeartbeatServiceTest {
 
         JsonNode doc = JacksonUtil.toJsonNode(awaitSingleRequest().body());
         assertThat(doc.get("system.cpu.count").asInt()).isPositive();
-        assertThat(doc.get("process.uptime.ms").asLong()).isNotNegative();
     }
 
     @Test
@@ -199,8 +295,8 @@ public class OpenSearchHeartbeatServiceTest {
 
     @Test
     public void givenCredentials_whenSendHeartbeat_thenSendsBasicAuthHeader() {
-        config.setUsername("admin");
-        config.setPassword("secret");
+        username = "admin";
+        password = "secret";
         heartbeatService = newService();
 
         heartbeatService.sendHeartbeat();
@@ -244,7 +340,7 @@ public class OpenSearchHeartbeatServiceTest {
 
     @Test
     public void givenOpenSearchUnreachable_whenSendHeartbeat_thenDoesNotThrowAndCountsFailure() {
-        config.setUrl("http://localhost:1");
+        url = "http://localhost:1";
         heartbeatService = newService();
 
         assertThatCode(() -> heartbeatService.sendHeartbeat()).doesNotThrowAnyException();
@@ -267,8 +363,61 @@ public class OpenSearchHeartbeatServiceTest {
     }
 
     @Test
+    public void givenRetryPolicy_whenFirstAttemptIsOverloaded_thenRetriesUntilAccepted() {
+        retryPolicy = fastRetryPolicy(3);
+        failFirstAttempts.set(1);
+        heartbeatService = newService();
+
+        heartbeatService.sendHeartbeat();
+
+        awaitRequestCount(2);
+        // The retry succeeded, so the tick as a whole never counts as a failure.
+        awaitConsecutiveFailures(0);
+        assertThat(received).hasSize(2);
+    }
+
+    @Test
+    public void givenRetryPolicy_whenAllAttemptsFail_thenStopsAtMaxAttempts() {
+        retryPolicy = fastRetryPolicy(3);
+        responseCode = 503;
+        heartbeatService = newService();
+
+        heartbeatService.sendHeartbeat();
+
+        awaitConsecutiveFailures(1);
+        assertThat(received).hasSize(3);
+    }
+
+    @Test
+    public void givenRetryPolicy_whenWriteIsRejectedAsBadRequest_thenDoesNotRetry() {
+        retryPolicy = fastRetryPolicy(3);
+        responseCode = 400;
+        heartbeatService = newService();
+
+        heartbeatService.sendHeartbeat();
+
+        awaitConsecutiveFailures(1);
+        await().pollDelay(Duration.ofMillis(500)).atMost(Duration.ofSeconds(5))
+                .until(() -> received.size() == 1);
+    }
+
+    @Test
+    public void givenRetriesInProgress_whenNextTickFires_thenSkipsUntilRetriesFinish() {
+        retryPolicy = fastRetryPolicy(3);
+        responseCode = 503;
+        heartbeatService = newService();
+
+        heartbeatService.sendHeartbeat();
+        heartbeatService.sendHeartbeat();
+
+        awaitConsecutiveFailures(1);
+        // Only the first tick's own attempt chain should have run; the second tick was skipped.
+        assertThat(received).hasSize(3);
+    }
+
+    @Test
     public void givenBlankUrl_whenInit_thenSelfDisablesWithoutBreakingStartup() {
-        config.setUrl("  ");
+        url = "  ";
 
         heartbeatService = newService();
 
@@ -291,12 +440,25 @@ public class OpenSearchHeartbeatServiceTest {
                 .until(() -> received.size() == 1);
     }
 
+    private static OpenSearchRetryPolicy fastRetryPolicy(int maxAttempts) {
+        return OpenSearchRetryPolicy.builder()
+                .maxAttempts(maxAttempts)
+                .initialBackoffMs(20)
+                .backoffMultiplier(2.0)
+                .maxBackoffMs(100)
+                .jitter(0)
+                .retryBudgetMs(10000)
+                .build();
+    }
+
     private OpenSearchHeartbeatService newService() {
         return newService(List.of());
     }
 
     private OpenSearchHeartbeatService newService(List<TbTransportService> transportServices) {
-        OpenSearchHeartbeatService service = new OpenSearchHeartbeatService(config, serviceInfoProvider, transportServices);
+        client = new OpenSearchClient(url, username, password, 2000, 3000, retryPolicy);
+        OpenSearchHeartbeatService service =
+                new OpenSearchHeartbeatService(config, client, serviceInfoProvider, transportServices);
         service.init();
         return service;
     }

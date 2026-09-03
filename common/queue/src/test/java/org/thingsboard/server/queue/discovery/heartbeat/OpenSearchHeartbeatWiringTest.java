@@ -33,13 +33,16 @@ public class OpenSearchHeartbeatWiringTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withBean(TbServiceInfoProvider.class, () -> mock(TbServiceInfoProvider.class))
-            .withUserConfiguration(OpenSearchHeartbeatConfig.class, OpenSearchHeartbeatService.class);
+            .withUserConfiguration(OpenSearchConfiguration.class,
+                    OpenSearchHeartbeatConfig.class,
+                    OpenSearchHeartbeatService.class);
 
     @Test
     public void givenHeartbeatNotEnabled_whenContextStarts_thenHeartbeatIsNotRegistered() {
         contextRunner.run(context -> assertThat(context)
                 .hasNotFailed()
-                .doesNotHaveBean(OpenSearchHeartbeatService.class));
+                .doesNotHaveBean(OpenSearchHeartbeatService.class)
+                .doesNotHaveBean(OpenSearchClient.class));
     }
 
     @Test
@@ -49,7 +52,10 @@ public class OpenSearchHeartbeatWiringTest {
                         "heartbeat.opensearch.enabled=true",
                         "heartbeat.opensearch.url=http://localhost:9200")
                 .run(context -> {
-                    assertThat(context).hasNotFailed().hasSingleBean(OpenSearchHeartbeatService.class);
+                    assertThat(context).hasNotFailed()
+                            .hasSingleBean(OpenSearchHeartbeatService.class)
+                            .hasSingleBean(OpenSearchClient.class)
+                            .hasSingleBean(OpenSearchRetryPolicy.class);
                     assertThat(context.getBean(OpenSearchHeartbeatService.class).isDisabled()).isFalse();
                 });
     }
@@ -74,6 +80,44 @@ public class OpenSearchHeartbeatWiringTest {
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getBean(OpenSearchHeartbeatService.class).isDisabled()).isTrue();
+                });
+    }
+
+    @Test
+    public void givenRetryProperties_whenContextStarts_thenPolicyIsBoundFromConfiguration() {
+        contextRunner
+                .withPropertyValues(
+                        "heartbeat.opensearch.enabled=true",
+                        "heartbeat.opensearch.url=http://localhost:9200",
+                        "heartbeat.opensearch.retry.max_attempts=4",
+                        "heartbeat.opensearch.retry.initial_backoff_ms=250",
+                        "heartbeat.opensearch.retry.backoff_multiplier=3.0",
+                        "heartbeat.opensearch.retry.max_backoff_ms=4000",
+                        "heartbeat.opensearch.retry.jitter=0.1")
+                .run(context -> {
+                    OpenSearchRetryPolicy policy = context.getBean(OpenSearchRetryPolicy.class);
+                    assertThat(policy.getMaxAttempts()).isEqualTo(4);
+                    assertThat(policy.getInitialBackoffMs()).isEqualTo(250);
+                    assertThat(policy.getBackoffMultiplier()).isEqualTo(3.0);
+                    assertThat(policy.getMaxBackoffMs()).isEqualTo(4000);
+                    assertThat(policy.getJitter()).isEqualTo(0.1);
+                    assertThat(policy.baseBackoffMs(2)).isEqualTo(750);
+                });
+    }
+
+    @Test
+    public void givenRetryBudgetOverrunningTheInterval_whenContextStarts_thenBudgetIsClampedBelowIt() {
+        contextRunner
+                .withPropertyValues(
+                        "heartbeat.opensearch.enabled=true",
+                        "heartbeat.opensearch.url=http://localhost:9200",
+                        "heartbeat.opensearch.interval_ms=10000",
+                        "heartbeat.opensearch.request_timeout_ms=5000",
+                        "heartbeat.opensearch.retry.budget_ms=60000")
+                .run(context -> {
+                    // A retry chain must not outlive its own tick, or the in-flight guard would drop the next
+                    // heartbeat and a struggling deployment would report less often, not more.
+                    assertThat(context.getBean(OpenSearchRetryPolicy.class).getRetryBudgetMs()).isEqualTo(5000);
                 });
     }
 

@@ -20,6 +20,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+/**
+ * What the heartbeat writes and how often. The connection itself, and its retry policy, belong to
+ * {@link OpenSearchConfiguration}.
+ */
 @Component
 @ConditionalOnProperty(prefix = "heartbeat.opensearch", name = "enabled", havingValue = "true")
 @Data
@@ -27,12 +31,6 @@ public class OpenSearchHeartbeatConfig {
 
     @Value("${heartbeat.opensearch.enabled:false}")
     private boolean enabled;
-
-    /**
-     * Base OpenSearch URL, e.g. {@code https://opensearch:9200}. Required when enabled.
-     */
-    @Value("${heartbeat.opensearch.url:}")
-    private String url;
 
     @Value("${heartbeat.opensearch.index:tb-heartbeat}")
     private String index;
@@ -43,12 +41,6 @@ public class OpenSearchHeartbeatConfig {
      */
     @Value("${heartbeat.opensearch.index_date_pattern:yyyy.MM.dd}")
     private String indexDatePattern;
-
-    @Value("${heartbeat.opensearch.username:}")
-    private String username;
-
-    @Value("${heartbeat.opensearch.password:}")
-    private String password;
 
     /**
      * Comma-separated {@code key=value} pairs added to every heartbeat, e.g. {@code env=prod,cluster=eu-1}.
@@ -62,14 +54,5 @@ public class OpenSearchHeartbeatConfig {
 
     @Value("${heartbeat.opensearch.interval_ms:30000}")
     private long intervalMs;
-
-    @Value("${heartbeat.opensearch.connect_timeout_ms:3000}")
-    private int connectTimeoutMs;
-
-    /**
-     * Kept below the heartbeat interval so a stalled push cannot outlive the tick that started it.
-     */
-    @Value("${heartbeat.opensearch.request_timeout_ms:5000}")
-    private int requestTimeoutMs;
 
 }
