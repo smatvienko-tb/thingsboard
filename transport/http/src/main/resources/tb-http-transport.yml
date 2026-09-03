@@ -428,3 +428,27 @@ notification_system:
   rules:
     # Semicolon-separated deduplication durations (in millis) for trigger types. Format: 'NotificationRuleTriggerType1:123;NotificationRuleTriggerType2:456'
     deduplication_durations: "${TB_NOTIFICATION_RULES_DEDUPLICATION_DURATIONS:RATE_LIMITS:14400000;}"
+
+# Actively pushes a liveness document to OpenSearch on a schedule, so external systems can confirm this
+# service is alive without scraping it. Independent of the actuator metrics endpoint Prometheus pulls from.
+heartbeat:
+  opensearch:
+    # Enable/disable the OpenSearch heartbeat push.
+    enabled: "${TB_HEARTBEAT_OPENSEARCH_ENABLED:false}"
+    # Base OpenSearch URL, e.g. https://opensearch:9200. Required when enabled.
+    url: "${TB_HEARTBEAT_OPENSEARCH_URL:}"
+    # Target index name. The date pattern below is appended to it.
+    index: "${TB_HEARTBEAT_OPENSEARCH_INDEX:tb-heartbeat}"
+    # Date suffix for the index name, so heartbeats roll into daily indices. Blank writes to a single index.
+    index_date_pattern: "${TB_HEARTBEAT_OPENSEARCH_INDEX_DATE_PATTERN:yyyy.MM.dd}"
+    # Optional basic auth credentials for OpenSearch.
+    username: "${TB_HEARTBEAT_OPENSEARCH_USERNAME:}"
+    password: "${TB_HEARTBEAT_OPENSEARCH_PASSWORD:}"
+    # Comma-separated key=value pairs added to every heartbeat, e.g. env=prod,cluster=eu-1
+    labels: "${TB_HEARTBEAT_OPENSEARCH_LABELS:}"
+    # How often to push a heartbeat, in milliseconds.
+    interval_ms: "${TB_HEARTBEAT_OPENSEARCH_INTERVAL_MS:30000}"
+    # Connection timeout for the push, in milliseconds.
+    connect_timeout_ms: "${TB_HEARTBEAT_OPENSEARCH_CONNECT_TIMEOUT_MS:3000}"
+    # Request timeout for the push, in milliseconds. Keep below interval_ms so a stalled push cannot outlive its tick.
+    request_timeout_ms: "${TB_HEARTBEAT_OPENSEARCH_REQUEST_TIMEOUT_MS:5000}"
