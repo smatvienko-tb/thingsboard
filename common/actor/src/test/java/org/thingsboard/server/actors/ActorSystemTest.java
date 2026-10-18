@@ -1,18 +1,5 @@
-/**
- * Copyright © 2016-2026 The Thingsboard Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-License-Identifier: Apache-2.0
 package org.thingsboard.server.actors;
 
 import lombok.extern.slf4j.Slf4j;
@@ -24,11 +11,13 @@ import org.junit.jupiter.api.Test;
 import org.thingsboard.common.util.ThingsBoardExecutors;
 import org.thingsboard.common.util.ThingsBoardThreadFactory;
 import org.thingsboard.server.common.data.id.DeviceId;
+import org.thingsboard.server.common.msg.TbActorMsg;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -198,6 +187,39 @@ public class ActorSystemTest {
     }
 
     @Test
+    public void testBroadcastToChildrenWithFilterAndHighPriority() throws Exception {
+        executor = Executors.newSingleThreadExecutor(ThingsBoardThreadFactory.forName(getClass().getSimpleName()));
+        actorSystem.createDispatcher(ROOT_DISPATCHER, executor);
+
+        TbActorId parentId = new TbEntityActorId(new DeviceId(UUID.randomUUID()));
+        actorSystem.createRootActor(ROOT_DISPATCHER, new RecordingActorCreator(parentId, new CopyOnWriteArrayList<>()));
+        TbActorId matchingChildId = new TbEntityActorId(new DeviceId(UUID.randomUUID()));
+        List<Integer> matchingChildValues = new CopyOnWriteArrayList<>();
+        actorSystem.createChildActor(ROOT_DISPATCHER, new RecordingActorCreator(matchingChildId, matchingChildValues), parentId);
+        TbActorId otherChildId = new TbEntityActorId(new DeviceId(UUID.randomUUID()));
+        List<Integer> otherChildValues = new CopyOnWriteArrayList<>();
+        actorSystem.createChildActor(ROOT_DISPATCHER, new RecordingActorCreator(otherChildId, otherChildValues), parentId);
+
+        // block the only dispatcher thread, so that all messages are enqueued before any is processed
+        CountDownLatch dispatcherBlocked = new CountDownLatch(1);
+        executor.submit(() -> {
+            dispatcherBlocked.await();
+            return null;
+        });
+        actorSystem.tell(matchingChildId, new IntTbActorMsg(1));
+        actorSystem.tell(matchingChildId, new IntTbActorMsg(2));
+        actorSystem.broadcastToChildren(parentId, id -> id.equals(matchingChildId), new IntTbActorMsg(42), true);
+        dispatcherBlocked.countDown();
+
+        Awaitility.await().atMost(TIMEOUT_AWAIT_MAX_SEC, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertThat(matchingChildValues).containsExactly(42, 1, 2));
+
+        actorSystem.tell(otherChildId, new IntTbActorMsg(3));
+        Awaitility.await().atMost(TIMEOUT_AWAIT_MAX_SEC, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertThat(otherChildValues).containsExactly(3));
+    }
+
+    @Test
     public void testFailedInit() throws InterruptedException {
         executor = ThingsBoardExecutors.newWorkStealingPool(parallelism, getClass());
         actorSystem.createDispatcher(ROOT_DISPATCHER, executor);
@@ -271,4 +293,32 @@ public class ActorSystemTest {
         AtomicInteger invocations = new AtomicInteger();
         return new ActorTestCtx(countDownLatch, invocations, i, actual);
     }
+
+    private static class RecordingActorCreator implements TbActorCreator {
+
+        private final TbActorId actorId;
+        private final List<Integer> values;
+
+        RecordingActorCreator(TbActorId actorId, List<Integer> values) {
+            this.actorId = actorId;
+            this.values = values;
+        }
+
+        @Override
+        public TbActorId createActorId() {
+            return actorId;
+        }
+
+        @Override
+        public TbActor createActor() {
+            return new AbstractTbActor() {
+                @Override
+                public boolean process(TbActorMsg msg) {
+                    values.add(((IntTbActorMsg) msg).getValue());
+                    return true;
+                }
+            };
+        }
+    }
+
 }
