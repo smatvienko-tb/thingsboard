@@ -138,18 +138,18 @@ public class BaseCalculatedFieldService extends AbstractEntityService implements
     }
 
     @Override
-    public void findAllCalculatedFields(int fetchSize, Consumer<CalculatedField> consumer) {
-        log.trace("Executing findAllCalculatedFields, fetchSize [{}]", fetchSize);
-        validatePositiveNumber(fetchSize, "Incorrect fetch size " + fetchSize);
-        calculatedFieldDao.findAllCalculatedFields(fetchSize, consumer);
+    public void findAllCalculatedFields(int pageSize, Consumer<List<CalculatedField>> pageConsumer) {
+        log.trace("Executing findAllCalculatedFields, pageSize [{}]", pageSize);
+        validatePositiveNumber(pageSize, "Incorrect page size " + pageSize);
+        calculatedFieldDao.findAllCalculatedFields(pageSize, pageConsumer);
     }
 
     @Override
-    public void findCalculatedFieldsByTenantId(TenantId tenantId, int fetchSize, Consumer<CalculatedField> consumer) {
-        log.trace("Executing findCalculatedFieldsByTenantId, tenantId [{}], fetchSize [{}]", tenantId, fetchSize);
+    public void findCalculatedFieldsByTenantId(TenantId tenantId, int pageSize, Consumer<List<CalculatedField>> pageConsumer) {
+        log.trace("Executing findCalculatedFieldsByTenantId, tenantId [{}], pageSize [{}]", tenantId, pageSize);
         validateId(tenantId, id -> INCORRECT_TENANT_ID + id);
-        validatePositiveNumber(fetchSize, "Incorrect fetch size " + fetchSize);
-        calculatedFieldDao.findCalculatedFieldsByTenantId(tenantId, fetchSize, consumer);
+        validatePositiveNumber(pageSize, "Incorrect page size " + pageSize);
+        calculatedFieldDao.findCalculatedFieldsByTenantId(tenantId, pageSize, pageConsumer);
     }
 
     @Override

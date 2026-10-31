@@ -29,9 +29,9 @@ public interface CalculatedFieldDao extends Dao<CalculatedField> {
 
     CalculatedField findByEntityIdAndTypeAndName(EntityId entityId, CalculatedFieldType type, String name);
 
-    void findAllCalculatedFields(int fetchSize, Consumer<CalculatedField> consumer);
+    void findAllCalculatedFields(int pageSize, Consumer<List<CalculatedField>> pageConsumer);
 
-    void findCalculatedFieldsByTenantId(TenantId tenantId, int fetchSize, Consumer<CalculatedField> consumer);
+    void findCalculatedFieldsByTenantId(TenantId tenantId, int pageSize, Consumer<List<CalculatedField>> pageConsumer);
 
     PageData<CalculatedField> findByEntityIdAndTypes(TenantId tenantId, EntityId entityId, Set<CalculatedFieldType> types, PageLink pageLink);
 

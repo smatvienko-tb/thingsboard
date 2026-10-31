@@ -485,15 +485,18 @@ public class CalculatedFieldServiceTest extends AbstractServiceTest {
                 saveCalculatedField(otherTenantId, "Stream other tenant device"));
         Map<CalculatedFieldId, CalculatedField> expected = saved.stream().collect(Collectors.toMap(CalculatedField::getId, cf -> cf));
 
-        // fetch size below the row count forces several cursor round trips; the large one reads everything in one go
-        for (int fetchSize : new int[]{2, 1000}) {
+        // a page size below the row count forces several keyset pages; the large one reads everything in one page
+        for (int pageSize : new int[]{2, 1000}) {
             List<CalculatedField> found = new ArrayList<>();
-            calculatedFieldService.findAllCalculatedFields(fetchSize, found::add);
+            calculatedFieldService.findAllCalculatedFields(pageSize, page -> {
+                assertThat(page).hasSizeLessThanOrEqualTo(pageSize);
+                found.addAll(page);
+            });
 
             // the table may hold calculated fields of other tests: check ours are there, exactly once, fully mapped
             assertThat(found).extracting(CalculatedField::getId).doesNotHaveDuplicates();
             List<CalculatedField> ours = found.stream().filter(cf -> expected.containsKey(cf.getId())).toList();
-            assertThat(ours).as("fetchSize %s", fetchSize).hasSize(expected.size());
+            assertThat(ours).as("pageSize %s", pageSize).hasSize(expected.size());
             ours.forEach(cf -> assertSameCalculatedField(cf, expected.get(cf.getId())));
         }
     }
@@ -506,15 +509,22 @@ public class CalculatedFieldServiceTest extends AbstractServiceTest {
         TenantId otherTenantId = createTenant().getId();
         saveCalculatedField(otherTenantId, "Other tenant stream device");
 
-        List<CalculatedField> found = new ArrayList<>();
-        calculatedFieldService.findCalculatedFieldsByTenantId(tenantId, 2, found::add);
-
-        assertThat(found).extracting(CalculatedField::getId).containsExactlyInAnyOrder(cf1.getId(), cf2.getId(), cf3.getId());
         Map<CalculatedFieldId, CalculatedField> expected = Map.of(cf1.getId(), cf1, cf2.getId(), cf2, cf3.getId(), cf3);
-        found.forEach(cf -> assertSameCalculatedField(cf, expected.get(cf.getId())));
+        // page sizes: several pages with a partial last one, a last page that is exactly full, one page bigger than the data
+        for (int pageSize : new int[]{1, 2, 3, 1000}) {
+            List<CalculatedField> found = new ArrayList<>();
+            calculatedFieldService.findCalculatedFieldsByTenantId(tenantId, pageSize, page -> {
+                assertThat(page).hasSizeLessThanOrEqualTo(pageSize);
+                found.addAll(page);
+            });
+
+            assertThat(found).as("pageSize %s", pageSize).extracting(CalculatedField::getId)
+                    .containsExactlyInAnyOrder(cf1.getId(), cf2.getId(), cf3.getId());
+            found.forEach(cf -> assertSameCalculatedField(cf, expected.get(cf.getId())));
+        }
 
         List<CalculatedField> none = new ArrayList<>();
-        calculatedFieldService.findCalculatedFieldsByTenantId(createTenant().getId(), 2, none::add);
+        calculatedFieldService.findCalculatedFieldsByTenantId(createTenant().getId(), 2, none::addAll);
         assertThat(none).isEmpty();
     }
 

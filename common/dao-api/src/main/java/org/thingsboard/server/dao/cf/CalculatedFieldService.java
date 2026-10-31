@@ -32,16 +32,16 @@ public interface CalculatedFieldService extends EntityDaoService {
     List<CalculatedField> findCalculatedFieldsByEntityId(TenantId tenantId, EntityId entityId);
 
     /**
-     * Passes every calculated field of every tenant to {@code consumer} in one database pass, reading {@code fetchSize}
-     * rows per round trip; fields with an unreadable configuration are skipped. The consumer runs while the database
-     * cursor is open: keep it fast and in-memory.
+     * Passes all calculated fields to {@code pageConsumer} page by page: keyset pages of up to {@code pageSize} rows by id,
+     * with no OFFSET and no count. A page is handed over after its query has finished, so no database connection is held
+     * while the consumer runs. Fields with an unreadable configuration are left out.
      */
-    void findAllCalculatedFields(int fetchSize, Consumer<CalculatedField> consumer);
+    void findAllCalculatedFields(int pageSize, Consumer<List<CalculatedField>> pageConsumer);
 
     /**
      * Same as {@link #findAllCalculatedFields(int, Consumer)}, limited to one tenant.
      */
-    void findCalculatedFieldsByTenantId(TenantId tenantId, int fetchSize, Consumer<CalculatedField> consumer);
+    void findCalculatedFieldsByTenantId(TenantId tenantId, int pageSize, Consumer<List<CalculatedField>> pageConsumer);
 
     PageData<CalculatedFieldInfo> findCalculatedFieldsByTenantIdAndFilter(TenantId tenantId, CalculatedFieldFilter filter, PageLink pageLink);
 

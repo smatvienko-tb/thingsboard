@@ -34,9 +34,11 @@ public class AbstractNativeRepository {
      * Runs {@code query} once and passes every row to {@code consumer}, reading {@code fetchSize} rows per round trip
      * through a server-side cursor. Memory stays bounded by {@code fetchSize}, and the whole iteration sees one snapshot.
      * <p>
-     * The consumer runs while the cursor and its connection are open, so it must be fast and must not wait on other
-     * database work. An exception thrown by the consumer stops the iteration and is rethrown (Spring's repository
-     * exception translation may wrap it).
+     * One pooled connection is held for the whole iteration (a cursor cannot release it between batches). This is still the
+     * shortest total hold: one pass instead of many paged queries (about 0.5 s per 1M devices on PostgreSQL, about 1 s on Citus,
+     * where keyset or OFFSET pages fan out to every shard). To keep the hold that short, the consumer runs while the cursor is
+     * open and must only do fast in-memory work: no blocking calls and no waiting on other database work. An exception thrown
+     * by the consumer stops the iteration and is rethrown (Spring's repository exception translation may wrap it).
      */
     protected <T> void stream(String query, int fetchSize, RowMapper<T> mapper, Consumer<T> consumer, Object... params) {
         long startTs = System.currentTimeMillis();
@@ -51,7 +53,7 @@ public class AbstractNativeRepository {
             }
             return ps;
         }, handler));
-        log.debug("Streamed {} rows in {} ms: {}", rowCount[0], System.currentTimeMillis() - startTs, query);
+        log.debug("Streamed {} rows, connection held for {} ms: {}", rowCount[0], System.currentTimeMillis() - startTs, query);
     }
 
     protected static UUID getTenantId(ResultSet rs) throws SQLException {

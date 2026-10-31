@@ -49,6 +49,7 @@ import org.thingsboard.server.queue.usagestats.DefaultTbApiUsageReportClient;
 import org.thingsboard.server.service.telemetry.TelemetrySubscriptionService;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -1155,6 +1156,37 @@ class DefaultDeviceStateServiceTest {
         ArgumentCaptor<EntityDataQuery> queryCaptor = ArgumentCaptor.forClass(EntityDataQuery.class);
         then(entityQueryRepository).should().findEntityDataByQueryInternal(queryCaptor.capture());
         assertThat(((EntityListFilter) queryCaptor.getValue().getEntityFilter()).getEntityList()).containsExactly(deviceId.getId().toString());
+    }
+
+    @Test
+    void givenMoreDevicesThanOnePack_whenOnAddedPartitions_thenFetchesStatesPackByPack() {
+        // GIVEN
+        List<DeviceId> deviceIds = new ArrayList<>();
+        for (int i = 0; i < 2500; i++) {
+            DeviceId id = new DeviceId(UUID.randomUUID());
+            deviceIds.add(id);
+            given(partitionService.resolve(ServiceType.TB_CORE, tenantId, id)).willReturn(tpi);
+        }
+        List<Integer> packSizesSeenDuringScan = new ArrayList<>();
+        willAnswer(invocation -> {
+            Consumer<DeviceIdInfo> consumer = invocation.getArgument(1);
+            for (DeviceId id : deviceIds) {
+                consumer.accept(new DeviceIdInfo(tenantId.getId(), null, id.getId()));
+            }
+            return null;
+        }).given(deviceService).findAllDeviceIdInfos(eq(50000), any());
+        given(entityQueryRepository.findEntityDataByQueryInternal(any())).willAnswer(invocation -> {
+            EntityDataQuery query = invocation.getArgument(0);
+            packSizesSeenDuringScan.add(((EntityListFilter) query.getEntityFilter()).getEntityList().size());
+            return PageData.emptyPageData();
+        });
+
+        // WHEN
+        var fetchTasks = service.onAddedPartitions(Set.of(tpi));
+
+        // THEN full packs of 1000 are fetched while the scan runs, the remainder after it
+        assertThat(packSizesSeenDuringScan).containsExactly(1000, 1000, 500);
+        assertThat(fetchTasks.get(tpi)).hasSize(3);
     }
 
 }

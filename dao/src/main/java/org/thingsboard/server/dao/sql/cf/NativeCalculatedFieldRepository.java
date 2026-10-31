@@ -5,13 +5,14 @@ package org.thingsboard.server.dao.sql.cf;
 
 import org.thingsboard.server.common.data.cf.CalculatedField;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 public interface NativeCalculatedFieldRepository {
 
-    void findAllCalculatedFields(int fetchSize, Consumer<CalculatedField> consumer);
+    void findAllCalculatedFields(int pageSize, Consumer<List<CalculatedField>> pageConsumer);
 
-    void findCalculatedFieldsByTenantId(UUID tenantId, int fetchSize, Consumer<CalculatedField> consumer);
+    void findCalculatedFieldsByTenantId(UUID tenantId, int pageSize, Consumer<List<CalculatedField>> pageConsumer);
 
 }

@@ -788,10 +788,7 @@ public class CalculatedFieldManagerMessageProcessor extends AbstractContextAware
     }
 
     public void initCalculatedFields() {
-        // read first, init after: compiling expressions must not hold the database cursor open
-        List<CalculatedField> cfs = new ArrayList<>();
-        cfDaoService.findCalculatedFieldsByTenantId(tenantId, cfSettings.getInitTenantFetchPackSize(), cfs::add);
-        cfs.forEach(cf -> {
+        cfDaoService.findCalculatedFieldsByTenantId(tenantId, cfSettings.getInitTenantFetchPackSize(), page -> page.forEach(cf -> {
             log.trace("Processing calculated field record: {}", cf);
             try {
                 initCalculatedField(cf);
@@ -799,7 +796,7 @@ public class CalculatedFieldManagerMessageProcessor extends AbstractContextAware
             } catch (CalculatedFieldException e) {
                 log.error("Failed to process calculated field record: {}", cf, e);
             }
-        });
+        }));
     }
 
     private void initCalculatedField(CalculatedField cf) throws CalculatedFieldException {

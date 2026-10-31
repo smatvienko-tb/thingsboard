@@ -65,13 +65,13 @@ public class JpaCalculatedFieldDao extends JpaAbstractDao<CalculatedFieldEntity,
     }
 
     @Override
-    public void findAllCalculatedFields(int fetchSize, Consumer<CalculatedField> consumer) {
-        nativeCalculatedFieldRepository.findAllCalculatedFields(fetchSize, consumer);
+    public void findAllCalculatedFields(int pageSize, Consumer<List<CalculatedField>> pageConsumer) {
+        nativeCalculatedFieldRepository.findAllCalculatedFields(pageSize, pageConsumer);
     }
 
     @Override
-    public void findCalculatedFieldsByTenantId(TenantId tenantId, int fetchSize, Consumer<CalculatedField> consumer) {
-        nativeCalculatedFieldRepository.findCalculatedFieldsByTenantId(tenantId.getId(), fetchSize, consumer);
+    public void findCalculatedFieldsByTenantId(TenantId tenantId, int pageSize, Consumer<List<CalculatedField>> pageConsumer) {
+        nativeCalculatedFieldRepository.findCalculatedFieldsByTenantId(tenantId.getId(), pageSize, pageConsumer);
     }
 
     @Override
