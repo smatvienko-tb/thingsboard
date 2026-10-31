@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * The Interface DeviceDao.
@@ -202,11 +203,9 @@ public interface DeviceDao extends Dao<Device>, TenantEntityDao<Device>, Exporta
 
     Long countByDeviceProfileAndEmptyOtaPackage(UUID tenantId, UUID deviceProfileId, OtaPackageType type);
 
-    PageData<DeviceIdInfo> findDeviceIdInfos(PageLink pageLink);
+    void findAllDeviceIdInfos(int fetchSize, Consumer<DeviceIdInfo> consumer);
 
-    PageData<ProfileEntityIdInfo> findProfileEntityIdInfos(PageLink pageLink);
-
-    PageData<ProfileEntityIdInfo> findProfileEntityIdInfosByTenantId(UUID tenantId, PageLink pageLink);
+    void findProfileEntityIdInfosByTenantId(UUID tenantId, int fetchSize, Consumer<ProfileEntityIdInfo> consumer);
 
     Map<String, Long> countDevicesPerTransportType();
 

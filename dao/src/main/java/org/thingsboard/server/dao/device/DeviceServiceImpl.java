@@ -81,12 +81,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static org.thingsboard.server.dao.DaoUtil.toUUIDs;
 import static org.thingsboard.server.dao.service.Validator.validateId;
 import static org.thingsboard.server.dao.service.Validator.validateIds;
 import static org.thingsboard.server.dao.service.Validator.validatePageLink;
+import static org.thingsboard.server.dao.service.Validator.validatePositiveNumber;
 import static org.thingsboard.server.dao.service.Validator.validateString;
 
 @Service("DeviceDaoService")
@@ -397,10 +399,10 @@ public class DeviceServiceImpl extends CachedVersionedEntityService<DeviceCacheK
     }
 
     @Override
-    public PageData<DeviceIdInfo> findDeviceIdInfos(PageLink pageLink) {
-        log.trace("Executing findTenantDeviceIdPairs, pageLink [{}]", pageLink);
-        validatePageLink(pageLink);
-        return deviceDao.findDeviceIdInfos(pageLink);
+    public void findAllDeviceIdInfos(int fetchSize, Consumer<DeviceIdInfo> consumer) {
+        log.trace("Executing findAllDeviceIdInfos, fetchSize [{}]", fetchSize);
+        validatePositiveNumber(fetchSize, "Incorrect fetch size " + fetchSize);
+        deviceDao.findAllDeviceIdInfos(fetchSize, consumer);
     }
 
     @Override
@@ -413,18 +415,11 @@ public class DeviceServiceImpl extends CachedVersionedEntityService<DeviceCacheK
     }
 
     @Override
-    public PageData<ProfileEntityIdInfo> findProfileEntityIdInfos(PageLink pageLink) {
-        log.trace("Executing findProfileEntityIdInfos, pageLink [{}]", pageLink);
-        validatePageLink(pageLink);
-        return deviceDao.findProfileEntityIdInfos(pageLink);
-    }
-
-    @Override
-    public PageData<ProfileEntityIdInfo> findProfileEntityIdInfosByTenantId(TenantId tenantId, PageLink pageLink) {
-        log.trace("Executing findProfileEntityIdInfosByTenantId, tenantId[{}], pageLink [{}]", tenantId, pageLink);
+    public void findProfileEntityIdInfosByTenantId(TenantId tenantId, int fetchSize, Consumer<ProfileEntityIdInfo> consumer) {
+        log.trace("Executing findProfileEntityIdInfosByTenantId, tenantId [{}], fetchSize [{}]", tenantId, fetchSize);
         validateId(tenantId, id -> INCORRECT_TENANT_ID + id);
-        validatePageLink(pageLink);
-        return deviceDao.findProfileEntityIdInfosByTenantId(tenantId.getId(), pageLink);
+        validatePositiveNumber(fetchSize, "Incorrect fetch size " + fetchSize);
+        deviceDao.findProfileEntityIdInfosByTenantId(tenantId.getId(), fetchSize, consumer);
     }
 
     @Override

@@ -23,6 +23,7 @@ import org.thingsboard.server.dao.entity.EntityDaoService;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public interface AssetService extends EntityDaoService {
 
@@ -52,9 +53,11 @@ public interface AssetService extends EntityDaoService {
 
     PageData<Asset> findAssetsByTenantIdAndType(TenantId tenantId, String type, PageLink pageLink);
 
-    PageData<ProfileEntityIdInfo> findProfileEntityIdInfos(PageLink pageLink);
-
-    PageData<ProfileEntityIdInfo> findProfileEntityIdInfosByTenantId(TenantId tenantId, PageLink pageLink);
+    /**
+     * Passes every asset of the tenant to {@code consumer} in one database pass, reading {@code fetchSize} rows per round trip.
+     * The consumer runs while the database cursor is open: keep it fast and in-memory.
+     */
+    void findProfileEntityIdInfosByTenantId(TenantId tenantId, int fetchSize, Consumer<ProfileEntityIdInfo> consumer);
 
     PageData<AssetId> findAssetIdsByTenantIdAndAssetProfileId(TenantId tenantId, AssetProfileId assetProfileId, PageLink pageLink);
 

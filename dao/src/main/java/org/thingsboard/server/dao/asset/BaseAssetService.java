@@ -50,6 +50,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
@@ -57,6 +58,7 @@ import static org.thingsboard.server.dao.DaoUtil.toUUIDs;
 import static org.thingsboard.server.dao.service.Validator.validateId;
 import static org.thingsboard.server.dao.service.Validator.validateIds;
 import static org.thingsboard.server.dao.service.Validator.validatePageLink;
+import static org.thingsboard.server.dao.service.Validator.validatePositiveNumber;
 import static org.thingsboard.server.dao.service.Validator.validateString;
 
 @Service("AssetDaoService")
@@ -262,18 +264,11 @@ public class BaseAssetService extends AbstractCachedEntityService<AssetCacheKey,
     }
 
     @Override
-    public PageData<ProfileEntityIdInfo> findProfileEntityIdInfos(PageLink pageLink) {
-        log.trace("Executing findProfileEntityIdInfos, pageLink [{}]", pageLink);
-        validatePageLink(pageLink);
-        return assetDao.findProfileEntityIdInfos(pageLink);
-    }
-
-    @Override
-    public PageData<ProfileEntityIdInfo> findProfileEntityIdInfosByTenantId(TenantId tenantId, PageLink pageLink) {
-        log.trace("Executing findProfileEntityIdInfosByTenantId, tenantId[{}], pageLink [{}]", tenantId, pageLink);
+    public void findProfileEntityIdInfosByTenantId(TenantId tenantId, int fetchSize, Consumer<ProfileEntityIdInfo> consumer) {
+        log.trace("Executing findProfileEntityIdInfosByTenantId, tenantId [{}], fetchSize [{}]", tenantId, fetchSize);
         validateId(tenantId, id -> INCORRECT_TENANT_ID + id);
-        validatePageLink(pageLink);
-        return assetDao.findProfileEntityIdInfosByTenantId(tenantId.getId(), pageLink);
+        validatePositiveNumber(fetchSize, "Incorrect fetch size " + fetchSize);
+        assetDao.findProfileEntityIdInfosByTenantId(tenantId.getId(), fetchSize, consumer);
     }
 
     @Override

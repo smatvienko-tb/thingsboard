@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.thingsboard.server.dao.DaoUtil.convertTenantEntityInfosToDto;
 
@@ -211,15 +212,8 @@ public class JpaAssetDao extends JpaAbstractDao<AssetEntity, Asset> implements A
     }
 
     @Override
-    public PageData<ProfileEntityIdInfo> findProfileEntityIdInfos(PageLink pageLink) {
-        log.debug("Find profile asset id infos by pageLink [{}]", pageLink);
-        return nativeAssetRepository.findProfileEntityIdInfos(DaoUtil.toPageable(pageLink));
-    }
-
-    @Override
-    public PageData<ProfileEntityIdInfo> findProfileEntityIdInfosByTenantId(UUID tenantId, PageLink pageLink) {
-        log.debug("Find profile asset id infos by pageLink [{}]", pageLink);
-        return nativeAssetRepository.findProfileEntityIdInfosByTenantId(tenantId, DaoUtil.toPageable(pageLink));
+    public void findProfileEntityIdInfosByTenantId(UUID tenantId, int fetchSize, Consumer<ProfileEntityIdInfo> consumer) {
+        nativeAssetRepository.findProfileEntityIdInfosByTenantId(tenantId, fetchSize, consumer);
     }
 
     @Override

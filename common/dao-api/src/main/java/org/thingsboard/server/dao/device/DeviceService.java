@@ -31,6 +31,7 @@ import org.thingsboard.server.dao.entity.EntityDaoService;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public interface DeviceService extends EntityDaoService {
 
@@ -70,13 +71,19 @@ public interface DeviceService extends EntityDaoService {
 
     PageData<DeviceInfo> findDeviceInfosByFilter(DeviceInfoFilter filter, PageLink pageLink);
 
-    PageData<DeviceIdInfo> findDeviceIdInfos(PageLink pageLink);
+    /**
+     * Passes every device of every tenant to {@code consumer} in one database pass, reading {@code fetchSize} rows per
+     * round trip, in no particular order. The consumer runs while the database cursor is open: keep it fast and in-memory.
+     */
+    void findAllDeviceIdInfos(int fetchSize, Consumer<DeviceIdInfo> consumer);
 
     PageData<DeviceId> findDeviceIdsByTenantIdAndCustomerId(TenantId tenantId, CustomerId customerId, PageLink pageLink);
 
-    PageData<ProfileEntityIdInfo> findProfileEntityIdInfos(PageLink pageLink);
-
-    PageData<ProfileEntityIdInfo> findProfileEntityIdInfosByTenantId(TenantId tenantId, PageLink pageLink);
+    /**
+     * Passes every device of the tenant to {@code consumer} in one database pass, reading {@code fetchSize} rows per round trip.
+     * The consumer runs while the database cursor is open: keep it fast and in-memory.
+     */
+    void findProfileEntityIdInfosByTenantId(TenantId tenantId, int fetchSize, Consumer<ProfileEntityIdInfo> consumer);
 
     PageData<DeviceId> findDeviceIdsByTenantIdAndDeviceProfileId(TenantId tenantId, DeviceProfileId deviceProfileId, PageLink pageLink);
 
