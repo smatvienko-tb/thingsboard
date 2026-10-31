@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.dao.sql.cf;
 
 import com.google.common.base.Strings;
@@ -27,6 +28,7 @@ import org.thingsboard.server.dao.util.SqlDao;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 @Slf4j
 @Component
@@ -63,15 +65,13 @@ public class JpaCalculatedFieldDao extends JpaAbstractDao<CalculatedFieldEntity,
     }
 
     @Override
-    public PageData<CalculatedField> findAll(PageLink pageLink) {
-        log.debug("Try to find calculated fields by pageLink [{}]", pageLink);
-        return nativeCalculatedFieldRepository.findCalculatedFields(DaoUtil.toPageable(pageLink));
+    public void findAllCalculatedFields(int fetchSize, Consumer<CalculatedField> consumer) {
+        nativeCalculatedFieldRepository.findAllCalculatedFields(fetchSize, consumer);
     }
 
     @Override
-    public PageData<CalculatedField> findAllByTenantId(TenantId tenantId, PageLink pageLink) {
-        log.debug("Try to find calculated fields by tenantId[{}] and pageLink [{}]", tenantId, pageLink);
-        return DaoUtil.toPageData(calculatedFieldRepository.findAllByTenantId(tenantId.getId(), DaoUtil.toPageable(pageLink)));
+    public void findCalculatedFieldsByTenantId(TenantId tenantId, int fetchSize, Consumer<CalculatedField> consumer) {
+        nativeCalculatedFieldRepository.findCalculatedFieldsByTenantId(tenantId.getId(), fetchSize, consumer);
     }
 
     @Override

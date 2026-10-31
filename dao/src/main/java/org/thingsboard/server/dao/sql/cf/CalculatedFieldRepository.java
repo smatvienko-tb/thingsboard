@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.dao.sql.cf;
 
 import org.springframework.data.domain.Page;
@@ -22,8 +23,6 @@ public interface CalculatedFieldRepository extends JpaRepository<CalculatedField
     List<CalculatedFieldId> findCalculatedFieldIdsByTenantIdAndEntityId(UUID tenantId, UUID entityId);
 
     List<CalculatedFieldEntity> findAllByTenantIdAndEntityId(UUID tenantId, UUID entityId);
-
-    Page<CalculatedFieldEntity> findAllByTenantId(UUID tenantId, Pageable pageable);
 
     @Query("SELECT cf FROM CalculatedFieldEntity cf WHERE cf.tenantId = :tenantId " +
            "AND cf.entityId = :entityId AND cf.type IN :types " +

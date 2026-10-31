@@ -25,7 +25,6 @@ import org.thingsboard.server.common.data.id.EntityId;
 import org.thingsboard.server.common.data.id.HasId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.id.TenantProfileId;
-import org.thingsboard.server.common.data.page.PageDataIterable;
 import org.thingsboard.server.common.data.plugin.ComponentLifecycleEvent;
 import org.thingsboard.server.common.msg.plugin.ComponentLifecycleMsg;
 import org.thingsboard.server.dao.cf.CalculatedFieldService;
@@ -79,13 +78,10 @@ public class DefaultCalculatedFieldCache implements CalculatedFieldCache {
 
     @AfterStartUp(order = AfterStartUp.CF_READ_CF_SERVICE)
     public void init() {
-        PageDataIterable<CalculatedField> cfs = new PageDataIterable<>(calculatedFieldService::findAllCalculatedFields, initFetchPackSize);
-        cfs.forEach(cf -> {
-            if (cf != null) {
-                calculatedFields.putIfAbsent(cf.getId(), cf);
-                List<CalculatedFieldLink> links = cf.getConfiguration().buildCalculatedFieldLinks(cf.getTenantId(), cf.getEntityId(), cf.getId());
-                calculatedFieldLinks.put(cf.getId(), new CopyOnWriteArrayList<>(links));
-            }
+        calculatedFieldService.findAllCalculatedFields(initFetchPackSize, cf -> {
+            calculatedFields.putIfAbsent(cf.getId(), cf);
+            List<CalculatedFieldLink> links = cf.getConfiguration().buildCalculatedFieldLinks(cf.getTenantId(), cf.getEntityId(), cf.getId());
+            calculatedFieldLinks.put(cf.getId(), new CopyOnWriteArrayList<>(links));
         });
         calculatedFields.values().forEach(cf -> {
             entityIdCalculatedFields.computeIfAbsent(cf.getEntityId(), id -> new CopyOnWriteArrayList<>()).add(cf);

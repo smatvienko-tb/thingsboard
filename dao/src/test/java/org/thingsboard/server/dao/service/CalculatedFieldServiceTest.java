@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.dao.service;
 
 import org.apache.commons.lang3.RandomUtils;
@@ -26,7 +27,9 @@ import org.thingsboard.server.common.data.cf.configuration.aggregation.RelatedEn
 import org.thingsboard.server.common.data.cf.configuration.geofencing.EntityCoordinates;
 import org.thingsboard.server.common.data.cf.configuration.geofencing.GeofencingCalculatedFieldConfiguration;
 import org.thingsboard.server.common.data.cf.configuration.geofencing.ZoneGroupConfiguration;
+import org.thingsboard.server.common.data.id.CalculatedFieldId;
 import org.thingsboard.server.common.data.id.EntityId;
+import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.relation.EntityRelation;
 import org.thingsboard.server.common.data.relation.EntitySearchDirection;
 import org.thingsboard.server.common.data.relation.RelationPathLevel;
@@ -39,6 +42,7 @@ import org.thingsboard.server.exception.DataValidationException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -469,6 +473,71 @@ public class CalculatedFieldServiceTest extends AbstractServiceTest {
 
         var savedConfig = (RelatedEntitiesAggregationCalculatedFieldConfiguration) saved.getConfiguration();
         assertThat(savedConfig.getScheduledUpdateInterval()).isEqualTo(customScheduledUpdateInterval);
+    }
+
+    @Test
+    public void testFindAllCalculatedFieldsStreamsEveryCalculatedFieldOnce() {
+        TenantId otherTenantId = createTenant().getId();
+        List<CalculatedField> saved = List.of(
+                saveCalculatedField(tenantId, "Stream device 1"),
+                saveCalculatedField(tenantId, "Stream device 2"),
+                saveCalculatedField(tenantId, "Stream device 3"),
+                saveCalculatedField(otherTenantId, "Stream other tenant device"));
+        Map<CalculatedFieldId, CalculatedField> expected = saved.stream().collect(Collectors.toMap(CalculatedField::getId, cf -> cf));
+
+        // fetch size below the row count forces several cursor round trips; the large one reads everything in one go
+        for (int fetchSize : new int[]{2, 1000}) {
+            List<CalculatedField> found = new ArrayList<>();
+            calculatedFieldService.findAllCalculatedFields(fetchSize, found::add);
+
+            // the table may hold calculated fields of other tests: check ours are there, exactly once, fully mapped
+            assertThat(found).extracting(CalculatedField::getId).doesNotHaveDuplicates();
+            List<CalculatedField> ours = found.stream().filter(cf -> expected.containsKey(cf.getId())).toList();
+            assertThat(ours).as("fetchSize %s", fetchSize).hasSize(expected.size());
+            ours.forEach(cf -> assertSameCalculatedField(cf, expected.get(cf.getId())));
+        }
+    }
+
+    @Test
+    public void testFindCalculatedFieldsByTenantIdStreamsOnlyTenantCalculatedFields() {
+        CalculatedField cf1 = saveCalculatedField(tenantId, "Tenant stream device 1");
+        CalculatedField cf2 = saveCalculatedField(tenantId, "Tenant stream device 2");
+        CalculatedField cf3 = saveCalculatedField(tenantId, "Tenant stream device 3");
+        TenantId otherTenantId = createTenant().getId();
+        saveCalculatedField(otherTenantId, "Other tenant stream device");
+
+        List<CalculatedField> found = new ArrayList<>();
+        calculatedFieldService.findCalculatedFieldsByTenantId(tenantId, 2, found::add);
+
+        assertThat(found).extracting(CalculatedField::getId).containsExactlyInAnyOrder(cf1.getId(), cf2.getId(), cf3.getId());
+        Map<CalculatedFieldId, CalculatedField> expected = Map.of(cf1.getId(), cf1, cf2.getId(), cf2, cf3.getId(), cf3);
+        found.forEach(cf -> assertSameCalculatedField(cf, expected.get(cf.getId())));
+
+        List<CalculatedField> none = new ArrayList<>();
+        calculatedFieldService.findCalculatedFieldsByTenantId(createTenant().getId(), 2, none::add);
+        assertThat(none).isEmpty();
+    }
+
+    private CalculatedField saveCalculatedField(TenantId tenantId, String deviceName) {
+        Device device = new Device();
+        device.setTenantId(tenantId);
+        device.setName(deviceName);
+        device = deviceService.saveDevice(device);
+        CalculatedField calculatedField = getCalculatedField(device.getId(), device.getId());
+        calculatedField.setTenantId(tenantId);
+        return calculatedFieldService.save(calculatedField);
+    }
+
+    private static void assertSameCalculatedField(CalculatedField actual, CalculatedField expected) {
+        assertThat(actual.getTenantId()).isEqualTo(expected.getTenantId());
+        assertThat(actual.getEntityId()).isEqualTo(expected.getEntityId());
+        assertThat(actual.getType()).isEqualTo(expected.getType());
+        assertThat(actual.getName()).isEqualTo(expected.getName());
+        assertThat(actual.getCreatedTime()).isEqualTo(expected.getCreatedTime());
+        assertThat(actual.getVersion()).isEqualTo(expected.getVersion());
+        assertThat(actual.getConfigurationVersion()).isEqualTo(expected.getConfigurationVersion());
+        assertThat(actual.getConfiguration()).isEqualTo(expected.getConfiguration());
+        assertThat(actual.getAdditionalInfo()).isEqualTo(expected.getAdditionalInfo());
     }
 
     private CalculatedField saveValidCalculatedField() {

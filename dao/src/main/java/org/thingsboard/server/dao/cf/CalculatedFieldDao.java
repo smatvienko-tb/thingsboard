@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.dao.cf;
 
 import org.thingsboard.server.common.data.cf.CalculatedField;
@@ -14,6 +15,7 @@ import org.thingsboard.server.dao.Dao;
 
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 
 public interface CalculatedFieldDao extends Dao<CalculatedField> {
 
@@ -27,9 +29,9 @@ public interface CalculatedFieldDao extends Dao<CalculatedField> {
 
     CalculatedField findByEntityIdAndTypeAndName(EntityId entityId, CalculatedFieldType type, String name);
 
-    PageData<CalculatedField> findAll(PageLink pageLink);
+    void findAllCalculatedFields(int fetchSize, Consumer<CalculatedField> consumer);
 
-    PageData<CalculatedField> findAllByTenantId(TenantId tenantId, PageLink pageLink);
+    void findCalculatedFieldsByTenantId(TenantId tenantId, int fetchSize, Consumer<CalculatedField> consumer);
 
     PageData<CalculatedField> findByEntityIdAndTypes(TenantId tenantId, EntityId entityId, Set<CalculatedFieldType> types, PageLink pageLink);
 

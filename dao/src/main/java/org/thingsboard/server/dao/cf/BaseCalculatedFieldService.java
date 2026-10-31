@@ -36,11 +36,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static org.thingsboard.server.dao.service.Validator.validateId;
 import static org.thingsboard.server.dao.service.Validator.validatePageLink;
+import static org.thingsboard.server.dao.service.Validator.validatePositiveNumber;
 
 @Service("CalculatedFieldDaoService")
 @Slf4j
@@ -136,18 +138,18 @@ public class BaseCalculatedFieldService extends AbstractEntityService implements
     }
 
     @Override
-    public PageData<CalculatedField> findAllCalculatedFields(PageLink pageLink) {
-        log.trace("Executing findAll, pageLink [{}]", pageLink);
-        validatePageLink(pageLink);
-        return calculatedFieldDao.findAll(pageLink);
+    public void findAllCalculatedFields(int fetchSize, Consumer<CalculatedField> consumer) {
+        log.trace("Executing findAllCalculatedFields, fetchSize [{}]", fetchSize);
+        validatePositiveNumber(fetchSize, "Incorrect fetch size " + fetchSize);
+        calculatedFieldDao.findAllCalculatedFields(fetchSize, consumer);
     }
 
     @Override
-    public PageData<CalculatedField> findCalculatedFieldsByTenantId(TenantId tenantId, PageLink pageLink) {
-        log.trace("Executing findAllByTenantId, tenantId [{}], pageLink [{}]", tenantId, pageLink);
+    public void findCalculatedFieldsByTenantId(TenantId tenantId, int fetchSize, Consumer<CalculatedField> consumer) {
+        log.trace("Executing findCalculatedFieldsByTenantId, tenantId [{}], fetchSize [{}]", tenantId, fetchSize);
         validateId(tenantId, id -> INCORRECT_TENANT_ID + id);
-        validatePageLink(pageLink);
-        return calculatedFieldDao.findAllByTenantId(tenantId, pageLink);
+        validatePositiveNumber(fetchSize, "Incorrect fetch size " + fetchSize);
+        calculatedFieldDao.findCalculatedFieldsByTenantId(tenantId, fetchSize, consumer);
     }
 
     @Override

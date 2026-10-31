@@ -788,7 +788,9 @@ public class CalculatedFieldManagerMessageProcessor extends AbstractContextAware
     }
 
     public void initCalculatedFields() {
-        PageDataIterable<CalculatedField> cfs = new PageDataIterable<>(pageLink -> cfDaoService.findCalculatedFieldsByTenantId(tenantId, pageLink), cfSettings.getInitTenantFetchPackSize());
+        // read first, init after: compiling expressions must not hold the database cursor open
+        List<CalculatedField> cfs = new ArrayList<>();
+        cfDaoService.findCalculatedFieldsByTenantId(tenantId, cfSettings.getInitTenantFetchPackSize(), cfs::add);
         cfs.forEach(cf -> {
             log.trace("Processing calculated field record: {}", cf);
             try {

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.dao.cf;
 
 import org.thingsboard.server.common.data.cf.CalculatedField;
@@ -14,6 +15,7 @@ import org.thingsboard.server.common.data.page.PageLink;
 import org.thingsboard.server.dao.entity.EntityDaoService;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 public interface CalculatedFieldService extends EntityDaoService {
 
@@ -29,9 +31,17 @@ public interface CalculatedFieldService extends EntityDaoService {
 
     List<CalculatedField> findCalculatedFieldsByEntityId(TenantId tenantId, EntityId entityId);
 
-    PageData<CalculatedField> findAllCalculatedFields(PageLink pageLink);
+    /**
+     * Passes every calculated field of every tenant to {@code consumer} in one database pass, reading {@code fetchSize}
+     * rows per round trip; fields with an unreadable configuration are skipped. The consumer runs while the database
+     * cursor is open: keep it fast and in-memory.
+     */
+    void findAllCalculatedFields(int fetchSize, Consumer<CalculatedField> consumer);
 
-    PageData<CalculatedField> findCalculatedFieldsByTenantId(TenantId tenantId, PageLink pageLink);
+    /**
+     * Same as {@link #findAllCalculatedFields(int, Consumer)}, limited to one tenant.
+     */
+    void findCalculatedFieldsByTenantId(TenantId tenantId, int fetchSize, Consumer<CalculatedField> consumer);
 
     PageData<CalculatedFieldInfo> findCalculatedFieldsByTenantIdAndFilter(TenantId tenantId, CalculatedFieldFilter filter, PageLink pageLink);
 
